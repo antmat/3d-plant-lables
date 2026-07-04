@@ -477,73 +477,41 @@ def ring_points_y(radius_x: float, radius_z: float, center_x: float, center_z: f
     ]
 
 
-def add_extruded_polygon_y(
-    mesh: Mesh,
-    polygon_xz: list[tuple[float, float]],
-    y_min: float,
-    y_max: float,
-) -> int:
-    start_count = len(mesh.triangles)
-    bottom = [(x, y_min, z) for x, z in polygon_xz]
-    top = [(x, y_max, z) for x, z in polygon_xz]
-    count = len(polygon_xz)
-    for index in range(count):
-        nxt = (index + 1) % count
-        mesh.quad(bottom[index], bottom[nxt], top[nxt], top[index])
-
-    center_bottom = (
-        sum(x for x, _ in polygon_xz) / count,
-        y_min,
-        sum(z for _, z in polygon_xz) / count,
-    )
-    center_top = (center_bottom[0], y_max, center_bottom[2])
-    for index in range(count):
-        nxt = (index + 1) % count
-        mesh.tri(center_bottom, bottom[nxt], bottom[index])
-        mesh.tri(center_top, top[index], top[nxt])
-    return len(mesh.triangles) - start_count
-
-
-def add_holder_transition_y(
-    mesh: Mesh,
-    holder_radius: float,
-    holder_center_z: float,
+def blended_holder_outer_points_y(
+    radius: float,
+    inner_radius: float,
+    center_z: float,
     plate_overlap: float,
-    cylinder_overlap: float,
-    y_min: float,
-    y_max: float,
+    y: float,
     segments: int,
-) -> int:
-    if holder_radius <= 0:
-        return 0
-    if abs(holder_center_z) >= holder_radius:
-        return 0
-
-    contact_x = math.sqrt(holder_radius * holder_radius - holder_center_z * holder_center_z)
-    start_x = max(0.0, contact_x - cylinder_overlap)
-    end_x = holder_radius
-    if end_x <= start_x:
-        return 0
-
-    sample_count = max(3, segments)
-    xs = [start_x + (end_x - start_x) * index / (sample_count - 1) for index in range(sample_count)]
-    bottom = [
-        (
-            x,
-            holder_center_z + math.sqrt(max(holder_radius * holder_radius - x * x, 0.0)) - cylinder_overlap,
-        )
-        for x in xs
-    ]
-    top_z = plate_overlap
-    positive = [(start_x, top_z), (end_x, top_z), *reversed(bottom)]
-    negative = [(-x, z) for x, z in reversed(positive)]
-    return (
-        add_extruded_polygon_y(mesh, positive, y_min, y_max)
-        + add_extruded_polygon_y(mesh, negative, y_min, y_max)
-    )
+) -> list[Vec3]:
+    min_wall = 0.6
+    top_z = min(center_z + radius, max(plate_overlap, center_z + inner_radius + min_wall))
+    top_offset = top_z - center_z
+    points = []
+    for k in range(segments):
+        angle = 2.0 * math.pi * k / segments
+        dx = math.cos(angle)
+        dz = math.sin(angle)
+        candidates = []
+        if dz < -1e-9:
+            candidates.append(radius)
+        if dz > 1e-9:
+            t = top_offset / dz
+            x = t * dx
+            if t > 0.0 and abs(x) <= radius + 1e-9:
+                candidates.append(t)
+        if abs(dx) > 1e-9:
+            t = (radius if dx > 0.0 else -radius) / dx
+            z = center_z + t * dz
+            if t > 0.0 and center_z - 1e-9 <= z <= top_z + 1e-9:
+                candidates.append(t)
+        distance = min(candidates) if candidates else radius
+        points.append((distance * dx, y, center_z + distance * dz))
+    return points
 
 
-def add_blind_tube_y(
+def add_blended_blind_tube_y(
     mesh: Mesh,
     outer_radius: float,
     inner_radius: float,
@@ -551,23 +519,61 @@ def add_blind_tube_y(
     y_min: float,
     y_max: float,
     cap_thickness: float,
+    plate_overlap: float,
+    transition_end_margin: float,
     segments: int,
-) -> None:
-    outer_bottom = ring_points_y(outer_radius, outer_radius, 0.0, center_z, y_min, segments)
-    outer_top = ring_points_y(outer_radius, outer_radius, 0.0, center_z, y_max, segments)
+) -> int:
+    start_count = len(mesh.triangles)
+    length = y_max - y_min
+    margin = min(max(transition_end_margin, 0.0), max(length / 2.0 - 0.001, 0.0))
+
+    stations: list[tuple[float, bool]] = []
+    if margin > 0.0:
+        stations = [
+            (y_min, False),
+            (y_min + margin, True),
+            (y_max - margin, True),
+            (y_max, False),
+        ]
+    else:
+        stations = [(y_min, True), (y_max, True)]
+
+    clean_stations: list[tuple[float, bool]] = []
+    for station in stations:
+        if clean_stations and abs(station[0] - clean_stations[-1][0]) < 1e-9:
+            clean_stations[-1] = station
+        else:
+            clean_stations.append(station)
+
+    outer_rings = []
+    for y, blended in clean_stations:
+        if blended:
+            outer_rings.append(
+                blended_holder_outer_points_y(outer_radius, inner_radius, center_z, plate_overlap, y, segments)
+            )
+        else:
+            outer_rings.append(ring_points_y(outer_radius, outer_radius, 0.0, center_z, y, segments))
+
     inner_bottom = ring_points_y(inner_radius, inner_radius, 0.0, center_z, y_min, segments)
     inner_top_y = y_max - cap_thickness
     inner_top = ring_points_y(inner_radius, inner_radius, 0.0, center_z, inner_top_y, segments)
+    outer_bottom = outer_rings[0]
+    outer_top = outer_rings[-1]
     c_outer_top = (0.0, y_max, center_z)
     c_inner_top = (0.0, inner_top_y, center_z)
 
+    for lower, upper in zip(outer_rings, outer_rings[1:]):
+        for k in range(segments):
+            n = (k + 1) % segments
+            mesh.quad(lower[k], lower[n], upper[n], upper[k])
+
     for k in range(segments):
         n = (k + 1) % segments
-        mesh.quad(outer_bottom[k], outer_bottom[n], outer_top[n], outer_top[k])
         mesh.tri(c_outer_top, outer_top[k], outer_top[n])
         mesh.quad(outer_bottom[n], outer_bottom[k], inner_bottom[k], inner_bottom[n])
         mesh.quad(inner_bottom[k], inner_top[k], inner_top[n], inner_bottom[n])
         mesh.tri(c_inner_top, inner_top[n], inner_top[k])
+    return len(mesh.triangles) - start_count
 
 
 def build_meshes(args: argparse.Namespace) -> tuple[Mesh, Mesh | None, dict[str, object]]:
@@ -616,7 +622,7 @@ def build_meshes(args: argparse.Namespace) -> tuple[Mesh, Mesh | None, dict[str,
     holder_center_z = -holder_outer + args.holder_embed
     y_min = -args.holder_length / 2.0
     y_max = args.holder_length / 2.0
-    add_blind_tube_y(
+    transition_triangles = add_blended_blind_tube_y(
         base,
         holder_outer,
         holder_inner,
@@ -624,21 +630,17 @@ def build_meshes(args: argparse.Namespace) -> tuple[Mesh, Mesh | None, dict[str,
         y_min,
         y_max,
         args.holder_cap_thickness,
+        args.transition_plate_overlap,
+        args.transition_end_margin,
         args.holder_segments,
     )
 
-    transition_y_min = y_min + args.transition_end_margin
-    transition_y_max = y_max - args.transition_end_margin
-    transition_triangles = add_holder_transition_y(
-        base,
-        holder_outer,
-        holder_center_z,
-        args.transition_plate_overlap,
-        args.transition_cylinder_overlap,
-        transition_y_min,
-        transition_y_max,
-        args.transition_segments,
+    transition_margin = min(
+        max(args.transition_end_margin, 0.0),
+        max(args.holder_length / 2.0 - 0.001, 0.0),
     )
+    transition_y_min = y_min + transition_margin
+    transition_y_max = y_max - transition_margin
 
     text = None
     if text_enabled:
@@ -704,9 +706,9 @@ def parser() -> argparse.ArgumentParser:
     p.add_argument("--holder-embed", type=float, default=2.0)
     p.add_argument("--holder-segments", type=int, default=96)
     p.add_argument("--transition-plate-overlap", type=float, default=0.8)
-    p.add_argument("--transition-cylinder-overlap", type=float, default=0.4)
+    p.add_argument("--transition-cylinder-overlap", type=float, default=0.4, help=argparse.SUPPRESS)
     p.add_argument("--transition-end-margin", type=float, default=0.0)
-    p.add_argument("--transition-segments", type=int, default=28)
+    p.add_argument("--transition-segments", type=int, default=28, help=argparse.SUPPRESS)
     p.add_argument("--orientation", choices=["face-down", "front-up"], default="face-down")
     return p
 

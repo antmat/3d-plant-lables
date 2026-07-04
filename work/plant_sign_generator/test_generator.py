@@ -26,6 +26,36 @@ def non_manifold_edges(mesh: gen.Mesh) -> dict[tuple[tuple[float, float, float],
     return {edge: count for edge, count in edge_counts.items() if count != 2}
 
 
+def connected_component_count(mesh: gen.Mesh) -> int:
+    parent = list(range(len(mesh.triangles)))
+
+    def find(index: int) -> int:
+        while parent[index] != index:
+            parent[index] = parent[parent[index]]
+            index = parent[index]
+        return index
+
+    def union(a: int, b: int) -> None:
+        root_a = find(a)
+        root_b = find(b)
+        if root_a != root_b:
+            parent[root_b] = root_a
+
+    edge_to_triangles: dict[tuple[tuple[float, float, float], tuple[float, float, float]], list[int]] = {}
+    for tri_index, tri in enumerate(mesh.triangles):
+        points = [tuple(round(v, 5) for v in point) for point in tri]
+        for a, b in ((points[0], points[1]), (points[1], points[2]), (points[2], points[0])):
+            edge = tuple(sorted((a, b)))
+            edge_to_triangles.setdefault(edge, []).append(tri_index)
+
+    for triangles in edge_to_triangles.values():
+        first = triangles[0]
+        for tri_index in triangles[1:]:
+            union(first, tri_index)
+
+    return len({find(index) for index in range(len(mesh.triangles))})
+
+
 def test_image_mask_top_row_maps_to_model_top_row() -> None:
     image_mask = np.zeros((5, 4), dtype=bool)
     image_mask[0, 2] = True
@@ -173,6 +203,13 @@ def test_default_holder_uses_filled_transition() -> None:
     assert len(transition_points) > 0
 
 
+def test_holder_transition_is_part_of_holder_shell() -> None:
+    args = gen.parser().parse_args(["--no-text", "--outdir", "outputs", "--orientation", "front-up"])
+    base, _, _ = gen.build_meshes(args)
+
+    assert connected_component_count(base) == 2
+
+
 def test_no_text_builds_flat_plate_without_text_mesh() -> None:
     args = gen.parser().parse_args(["--no-text", "--outdir", "outputs"])
     base, text, meta = gen.build_meshes(args)
@@ -231,6 +268,7 @@ def main() -> int:
         test_multiline_text_accepts_per_line_fonts,
         test_default_holder_fits_12mm_rebar,
         test_default_holder_uses_filled_transition,
+        test_holder_transition_is_part_of_holder_shell,
         test_no_text_builds_flat_plate_without_text_mesh,
         test_no_text_cli_skips_and_removes_plate_text_stl,
     ]
