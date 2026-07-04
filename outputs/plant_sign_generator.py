@@ -477,25 +477,70 @@ def ring_points_y(radius_x: float, radius_z: float, center_x: float, center_z: f
     ]
 
 
-def add_solid_ellipse_y(
+def add_extruded_polygon_y(
     mesh: Mesh,
-    center_x: float,
-    center_z: float,
-    radius_x: float,
-    radius_z: float,
+    polygon_xz: list[tuple[float, float]],
+    y_min: float,
+    y_max: float,
+) -> int:
+    start_count = len(mesh.triangles)
+    bottom = [(x, y_min, z) for x, z in polygon_xz]
+    top = [(x, y_max, z) for x, z in polygon_xz]
+    count = len(polygon_xz)
+    for index in range(count):
+        nxt = (index + 1) % count
+        mesh.quad(bottom[index], bottom[nxt], top[nxt], top[index])
+
+    center_bottom = (
+        sum(x for x, _ in polygon_xz) / count,
+        y_min,
+        sum(z for _, z in polygon_xz) / count,
+    )
+    center_top = (center_bottom[0], y_max, center_bottom[2])
+    for index in range(count):
+        nxt = (index + 1) % count
+        mesh.tri(center_bottom, bottom[nxt], bottom[index])
+        mesh.tri(center_top, top[index], top[nxt])
+    return len(mesh.triangles) - start_count
+
+
+def add_holder_transition_y(
+    mesh: Mesh,
+    holder_radius: float,
+    holder_center_z: float,
+    plate_overlap: float,
+    cylinder_overlap: float,
     y_min: float,
     y_max: float,
     segments: int,
-) -> None:
-    bottom = ring_points_y(radius_x, radius_z, center_x, center_z, y_min, segments)
-    top = ring_points_y(radius_x, radius_z, center_x, center_z, y_max, segments)
-    c_bottom = (center_x, y_min, center_z)
-    c_top = (center_x, y_max, center_z)
-    for k in range(segments):
-        n = (k + 1) % segments
-        mesh.quad(bottom[k], bottom[n], top[n], top[k])
-        mesh.tri(c_top, top[k], top[n])
-        mesh.tri(c_bottom, bottom[n], bottom[k])
+) -> int:
+    if holder_radius <= 0:
+        return 0
+    if abs(holder_center_z) >= holder_radius:
+        return 0
+
+    contact_x = math.sqrt(holder_radius * holder_radius - holder_center_z * holder_center_z)
+    start_x = max(0.0, contact_x - cylinder_overlap)
+    end_x = holder_radius
+    if end_x <= start_x:
+        return 0
+
+    sample_count = max(3, segments)
+    xs = [start_x + (end_x - start_x) * index / (sample_count - 1) for index in range(sample_count)]
+    bottom = [
+        (
+            x,
+            holder_center_z + math.sqrt(max(holder_radius * holder_radius - x * x, 0.0)) - cylinder_overlap,
+        )
+        for x in xs
+    ]
+    top_z = plate_overlap
+    positive = [(start_x, top_z), (end_x, top_z), *reversed(bottom)]
+    negative = [(-x, z) for x, z in reversed(positive)]
+    return (
+        add_extruded_polygon_y(mesh, positive, y_min, y_max)
+        + add_extruded_polygon_y(mesh, negative, y_min, y_max)
+    )
 
 
 def add_blind_tube_y(
@@ -576,10 +621,18 @@ def build_meshes(args: argparse.Namespace) -> tuple[Mesh, Mesh, dict[str, object
         args.holder_segments,
     )
 
-    rib_y_min = y_min + args.rib_end_margin
-    rib_y_max = y_max - args.rib_end_margin
-    add_solid_ellipse_y(base, -args.rib_offset_x, -args.rib_depth, args.rib_radius_x, args.rib_radius_z, rib_y_min, rib_y_max, args.rib_segments)
-    add_solid_ellipse_y(base, args.rib_offset_x, -args.rib_depth, args.rib_radius_x, args.rib_radius_z, rib_y_min, rib_y_max, args.rib_segments)
+    transition_y_min = y_min + args.transition_end_margin
+    transition_y_max = y_max - args.transition_end_margin
+    transition_triangles = add_holder_transition_y(
+        base,
+        holder_outer,
+        holder_center_z,
+        args.transition_plate_overlap,
+        args.transition_cylinder_overlap,
+        transition_y_min,
+        transition_y_max,
+        args.transition_segments,
+    )
 
     text = Mesh("plant_sign_text")
     add_mask_solid(
@@ -603,6 +656,7 @@ def build_meshes(args: argparse.Namespace) -> tuple[Mesh, Mesh, dict[str, object
         "text_triangles": len(text.triangles),
         "channel_diameter": holder_inner * 2.0,
         "orientation": args.orientation,
+        "transition_triangles": transition_triangles,
         "line_count": text_layout.line_count,
         "font_paths": ", ".join(text_layout.font_paths),
         "font_pixel_sizes": ", ".join(str(size) for size in text_layout.font_pixel_sizes),
@@ -632,17 +686,15 @@ def parser() -> argparse.ArgumentParser:
     p.add_argument("--pocket-clearance", type=float, default=0.0)
     p.add_argument("--rod-diameter", type=float, default=12.0)
     p.add_argument("--rod-clearance", type=float, default=0.6)
-    p.add_argument("--holder-outer-diameter", type=float, default=24.0)
+    p.add_argument("--holder-outer-diameter", type=float, default=20.0)
     p.add_argument("--holder-length", type=float, default=65.0)
     p.add_argument("--holder-cap-thickness", type=float, default=4.0)
     p.add_argument("--holder-embed", type=float, default=2.0)
     p.add_argument("--holder-segments", type=int, default=96)
-    p.add_argument("--rib-offset-x", type=float, default=5.8)
-    p.add_argument("--rib-depth", type=float, default=2.4)
-    p.add_argument("--rib-radius-x", type=float, default=3.4)
-    p.add_argument("--rib-radius-z", type=float, default=2.8)
-    p.add_argument("--rib-end-margin", type=float, default=4.0)
-    p.add_argument("--rib-segments", type=int, default=32)
+    p.add_argument("--transition-plate-overlap", type=float, default=0.8)
+    p.add_argument("--transition-cylinder-overlap", type=float, default=0.4)
+    p.add_argument("--transition-end-margin", type=float, default=4.0)
+    p.add_argument("--transition-segments", type=int, default=28)
     p.add_argument("--orientation", choices=["face-down", "front-up"], default="face-down")
     return p
 

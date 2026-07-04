@@ -50,10 +50,10 @@ Rear holder:
 - Top: closed/blind.
 - Bottom: open.
 - Internal channel: circular, nominal 12.6 mm diameter for 12 mm composite rebar.
-- External holder diameter: about 24 mm.
+- External holder diameter: about 20 mm.
 - Holder length along the label height: about 65 mm.
-- Smooth side transitions/fillets should blend the holder into the plate for
-  strength and appearance.
+- Smooth filled side transitions should fill the empty space between the holder
+  cylinder and rear plate face for strength and appearance.
 
 ## Modeling Approach
 

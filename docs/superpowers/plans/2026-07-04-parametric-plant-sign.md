@@ -15,7 +15,7 @@
 - Base plate: 180 mm width, 90 mm height, 4 mm thickness.
 - Default text: `яблоня`.
 - Text pocket depth: about 0.8 mm.
-- Rear holder: centered, vertical, external cylinder about 24 mm diameter, about 65 mm long.
+- Rear holder: centered, vertical, external cylinder about 20 mm diameter, about 65 mm long.
 - Holder channel: circular, blind at the top, open at the bottom, nominal 12.6 mm diameter for 12 mm composite rebar.
 - Current workspace is not a git repository, so verification replaces commit steps.
 
@@ -52,7 +52,7 @@ Implement `generate_plant_sign.py` with:
 - Text insert mesh from the mask.
 - Base mesh with a text-shaped recessed pocket from the same mask.
 - Rear blind cylindrical holder with a 12.6 mm internal channel.
-- Two side blend ribs from holder to plate.
+- Two filled side transitions from holder to plate.
 
 - [ ] **Step 3: Run the smoke test**
 

@@ -149,9 +149,26 @@ def test_default_holder_fits_12mm_rebar() -> None:
 
     assert args.rod_diameter == 12.0
     assert args.rod_clearance == 0.6
-    assert args.holder_outer_diameter == 24.0
+    assert args.holder_outer_diameter == 20.0
     assert abs(float(meta["channel_diameter"]) - 12.6) < 0.001
-    assert abs((base_max[2] - base_min[2]) - 26.0) < 0.001
+    assert abs((base_max[2] - base_min[2]) - 22.0) < 0.001
+
+
+def test_default_holder_uses_filled_transition() -> None:
+    args = gen.parser().parse_args(["--text", "яблоня", "--outdir", "outputs", "--orientation", "front-up"])
+    base, _, meta = gen.build_meshes(args)
+    points = np.array([point for tri in base.triangles for point in tri], dtype=float)
+    holder_radius = args.holder_outer_diameter / 2.0
+    holder_center_z = -holder_radius + args.holder_embed
+    contact_x = (holder_radius**2 - holder_center_z**2) ** 0.5
+    transition_points = points[
+        (points[:, 0] > contact_x + 0.5)
+        & (points[:, 0] <= holder_radius + 0.01)
+        & (points[:, 2] > -0.2)
+    ]
+
+    assert int(meta["transition_triangles"]) > 0
+    assert len(transition_points) > 0
 
 
 def main() -> int:
@@ -166,6 +183,7 @@ def main() -> int:
         test_multiline_text_with_line_sizes_generates_two_line_mask,
         test_multiline_text_accepts_per_line_fonts,
         test_default_holder_fits_12mm_rebar,
+        test_default_holder_uses_filled_transition,
     ]
     failed = 0
     for test in tests:
