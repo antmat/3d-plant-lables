@@ -53,7 +53,7 @@ Rear holder:
 - External holder diameter: about 20 mm.
 - Holder length along the label height: about 65 mm.
 - Smooth filled side transitions should fill the empty space between the holder
-  cylinder and rear plate face for strength and appearance.
+  cylinder and rear plate face along the full holder length.
 
 ## Modeling Approach
 

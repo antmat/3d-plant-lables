@@ -52,7 +52,7 @@ Implement `generate_plant_sign.py` with:
 - Text insert mesh from the mask.
 - Base mesh with a text-shaped recessed pocket from the same mask.
 - Rear blind cylindrical holder with a 12.6 mm internal channel.
-- Two filled side transitions from holder to plate.
+- Two filled side transitions from holder to plate along the full holder length.
 
 - [ ] **Step 3: Run the smoke test**
 

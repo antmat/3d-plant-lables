@@ -65,6 +65,7 @@ printf 'яблоня\nMalus domestica\n' | python3 outputs/plant_sign_generator.
 --holder-length 70            # сделать держатель длиннее
 --transition-plate-overlap 0.8      # насколько заливка входит в табличку
 --transition-cylinder-overlap 0.4   # насколько заливка входит в цилиндр
+--transition-end-margin 0           # отступ заливки сверху/снизу; 0 = вся длина
 --text-margin-x 10            # дать тексту больше ширины
 --text-depth 0.8              # глубина вплавления текста
 --line-size 24                # размер первой строки в мм

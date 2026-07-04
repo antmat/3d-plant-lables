@@ -657,6 +657,7 @@ def build_meshes(args: argparse.Namespace) -> tuple[Mesh, Mesh, dict[str, object
         "channel_diameter": holder_inner * 2.0,
         "orientation": args.orientation,
         "transition_triangles": transition_triangles,
+        "transition_length": transition_y_max - transition_y_min,
         "line_count": text_layout.line_count,
         "font_paths": ", ".join(text_layout.font_paths),
         "font_pixel_sizes": ", ".join(str(size) for size in text_layout.font_pixel_sizes),
@@ -693,7 +694,7 @@ def parser() -> argparse.ArgumentParser:
     p.add_argument("--holder-segments", type=int, default=96)
     p.add_argument("--transition-plate-overlap", type=float, default=0.8)
     p.add_argument("--transition-cylinder-overlap", type=float, default=0.4)
-    p.add_argument("--transition-end-margin", type=float, default=4.0)
+    p.add_argument("--transition-end-margin", type=float, default=0.0)
     p.add_argument("--transition-segments", type=int, default=28)
     p.add_argument("--orientation", choices=["face-down", "front-up"], default="face-down")
     return p

@@ -168,6 +168,8 @@ def test_default_holder_uses_filled_transition() -> None:
     ]
 
     assert int(meta["transition_triangles"]) > 0
+    assert args.transition_end_margin == 0.0
+    assert abs(float(meta["transition_length"]) - args.holder_length) < 0.001
     assert len(transition_points) > 0
 
 
