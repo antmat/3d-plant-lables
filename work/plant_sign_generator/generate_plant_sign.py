@@ -329,6 +329,69 @@ def dilate_mask(mask: np.ndarray, clearance_mm: float, resolution_mm: float) -> 
     return np.asarray(dilated) > 0
 
 
+def draw_disk(mask: np.ndarray, x_centers: np.ndarray, y_centers: np.ndarray, cx: float, cy: float, radius: float) -> None:
+    xx, yy = np.meshgrid(x_centers, y_centers)
+    mask |= (xx - cx) * (xx - cx) + (yy - cy) * (yy - cy) <= radius * radius
+
+
+def draw_polyline(mask: np.ndarray, x_centers: np.ndarray, y_centers: np.ndarray, points: list[tuple[float, float]], radius: float) -> None:
+    samples_per_mm = 2.5
+    for (x0, y0), (x1, y1) in zip(points, points[1:]):
+        length = math.hypot(x1 - x0, y1 - y0)
+        steps = max(1, int(math.ceil(length * samples_per_mm)))
+        for step in range(steps + 1):
+            t = step / steps
+            draw_disk(mask, x_centers, y_centers, x0 + (x1 - x0) * t, y0 + (y1 - y0) * t, radius)
+
+
+def scroll_curve_points(cx: float, cy: float, width: float, height: float, mirror: bool) -> list[tuple[float, float]]:
+    points = []
+    turns = 1.65
+    for index in range(90):
+        t = index / 89.0
+        angle = turns * 2.0 * math.pi * t
+        radius = (1.0 - t) * min(width, height) * 0.42
+        x = cx + width * (t - 0.5) * 0.72 + radius * math.cos(angle)
+        y = cy + radius * math.sin(angle) * 0.75
+        if mirror:
+            x = 2.0 * cx - x
+        points.append((x, y))
+    return points
+
+
+def make_top_scroll_mask(
+    x_centers: np.ndarray,
+    y_centers: np.ndarray,
+    plate_width: float,
+    plate_height: float,
+    width: float,
+    height: float,
+    margin_x: float,
+    margin_top: float,
+) -> np.ndarray:
+    mask = np.zeros((len(y_centers), len(x_centers)), dtype=bool)
+    stroke = max(0.8, min(width, height) * 0.12)
+    center_y = plate_height / 2.0 - margin_top - height / 2.0
+    left_center_x = -plate_width / 2.0 + margin_x + width / 2.0
+    right_center_x = plate_width / 2.0 - margin_x - width / 2.0
+    for center_x, mirror in ((left_center_x, False), (right_center_x, True)):
+        curve = scroll_curve_points(center_x, center_y, width, height, mirror)
+        draw_polyline(mask, x_centers, y_centers, curve, stroke)
+        leaf_x = center_x + (-width * 0.24 if mirror else width * 0.24)
+        draw_polyline(
+            mask,
+            x_centers,
+            y_centers,
+            [
+                (leaf_x - width * 0.08, center_y + height * 0.18),
+                (leaf_x, center_y + height * 0.34),
+                (leaf_x + width * 0.08, center_y + height * 0.18),
+            ],
+            stroke * 0.75,
+        )
+    return mask
+
+
 def image_mask_to_model_mask(mask: np.ndarray) -> np.ndarray:
     return np.flipud(mask)
 
@@ -576,10 +639,25 @@ def build_meshes(args: argparse.Namespace) -> tuple[Mesh, Mesh | None, dict[str,
         text_mask = text_layout.mask
         text_mask = image_mask_to_model_mask(text_mask)
         text_mask &= occupied
+        scroll_mask = np.zeros_like(occupied)
+        if args.top_scrolls:
+            scroll_mask = make_top_scroll_mask(
+                x_centers,
+                y_centers,
+                args.plate_width,
+                args.plate_height,
+                args.scroll_width,
+                args.scroll_height,
+                args.scroll_margin_x,
+                args.scroll_margin_top,
+            )
+            scroll_mask &= occupied
+            text_mask |= scroll_mask
         text_mask = fill_diagonal_contacts(text_mask) & occupied
         pocket_mask = dilate_mask(text_mask, args.pocket_clearance, args.resolution) & occupied
     else:
         text_layout = TextLayout(np.zeros_like(occupied), 0, [], [])
+        scroll_mask = np.zeros_like(occupied)
         text_mask = text_layout.mask
         pocket_mask = text_mask
 
@@ -627,6 +705,7 @@ def build_meshes(args: argparse.Namespace) -> tuple[Mesh, Mesh | None, dict[str,
         "font": font,
         "grid": f"{nx} x {ny}",
         "text_cells": int(text_mask.sum()),
+        "scroll_cells": int(scroll_mask.sum()),
         "pocket_cells": int(pocket_mask.sum()),
         "base_triangles": len(base.triangles),
         "text_enabled": text_enabled,
@@ -665,6 +744,11 @@ def parser() -> argparse.ArgumentParser:
     p.add_argument("--text-threshold", type=int, default=110)
     p.add_argument("--antialias", type=int, default=3)
     p.add_argument("--pocket-clearance", type=float, default=0.0)
+    p.add_argument("--top-scrolls", action="store_true", help="Add second-color decorative scroll ornaments near the top.")
+    p.add_argument("--scroll-width", type=float, default=32.0)
+    p.add_argument("--scroll-height", type=float, default=12.0)
+    p.add_argument("--scroll-margin-x", type=float, default=14.0)
+    p.add_argument("--scroll-margin-top", type=float, default=8.0)
     p.add_argument("--rod-diameter", type=float, default=12.0)
     p.add_argument("--rod-clearance", type=float, default=0.6)
     p.add_argument("--holder-outer-diameter", type=float, default=20.0)

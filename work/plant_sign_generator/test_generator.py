@@ -172,6 +172,50 @@ def test_multiline_text_accepts_per_line_fonts() -> None:
     assert georgia in meta["font_paths"]
 
 
+def test_top_scrolls_default_off() -> None:
+    args = gen.parser().parse_args(["--text", "яблоня", "--outdir", "outputs"])
+    _, _, meta = gen.build_meshes(args)
+
+    assert int(meta["scroll_cells"]) == 0
+
+
+def test_top_scrolls_add_second_color_geometry_near_top_corners() -> None:
+    args_plain = gen.parser().parse_args(["--text", "яблоня", "--outdir", "outputs", "--orientation", "front-up"])
+    _, text_plain, meta_plain = gen.build_meshes(args_plain)
+    try:
+        args_scrolls = gen.parser().parse_args([
+            "--text",
+            "яблоня",
+            "--top-scrolls",
+            "--outdir",
+            "outputs",
+            "--orientation",
+            "front-up",
+        ])
+    except SystemExit as exc:
+        raise AssertionError("--top-scrolls should be accepted") from exc
+
+    base_scrolls, text_scrolls, meta_scrolls = gen.build_meshes(args_scrolls)
+    points = np.array([point for tri in text_scrolls.triangles for point in tri], dtype=float)
+    top_left = points[
+        (points[:, 0] < -args_scrolls.plate_width / 2.0 + args_scrolls.scroll_margin_x + args_scrolls.scroll_width + 2.0)
+        & (points[:, 1] > args_scrolls.plate_height / 2.0 - args_scrolls.scroll_margin_top - args_scrolls.scroll_height - 2.0)
+    ]
+    top_right = points[
+        (points[:, 0] > args_scrolls.plate_width / 2.0 - args_scrolls.scroll_margin_x - args_scrolls.scroll_width - 2.0)
+        & (points[:, 1] > args_scrolls.plate_height / 2.0 - args_scrolls.scroll_margin_top - args_scrolls.scroll_height - 2.0)
+    ]
+
+    assert int(meta_scrolls["scroll_cells"]) > 0
+    assert int(meta_scrolls["text_cells"]) > int(meta_plain["text_cells"])
+    assert len(text_scrolls.triangles) > len(text_plain.triangles)
+    assert len(top_left) > 0
+    assert len(top_right) > 0
+    assert non_manifold_edges(base_scrolls) == {}
+    assert non_manifold_edges(text_scrolls) == {}
+    assert connected_component_count(base_scrolls) == 1
+
+
 def test_default_holder_fits_12mm_rebar() -> None:
     args = gen.parser().parse_args(["--text", "яблоня", "--outdir", "outputs"])
     base, _, meta = gen.build_meshes(args)
@@ -266,6 +310,8 @@ def main() -> int:
         test_resolve_text_uses_default_when_text_omitted_and_stdin_empty,
         test_multiline_text_with_line_sizes_generates_two_line_mask,
         test_multiline_text_accepts_per_line_fonts,
+        test_top_scrolls_default_off,
+        test_top_scrolls_add_second_color_geometry_near_top_corners,
         test_default_holder_fits_12mm_rebar,
         test_default_holder_uses_filled_transition,
         test_base_plate_and_holder_are_one_shell,
