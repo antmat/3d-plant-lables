@@ -85,7 +85,7 @@ def test_public_generator_runs_with_default_python() -> None:
 
     assert result.returncode == 0, result.stderr
     assert "ModuleNotFoundError" not in result.stderr
-    assert "Generate two aligned STL files" in result.stdout
+    assert "Generate aligned STL files" in result.stdout
 
 
 def test_resolve_text_reads_stdin_when_text_omitted() -> None:
@@ -173,6 +173,51 @@ def test_default_holder_uses_filled_transition() -> None:
     assert len(transition_points) > 0
 
 
+def test_no_text_builds_flat_plate_without_text_mesh() -> None:
+    args = gen.parser().parse_args(["--no-text", "--outdir", "outputs"])
+    base, text, meta = gen.build_meshes(args)
+    points = np.array([point for tri in base.triangles for point in tri], dtype=float)
+
+    assert text is None
+    assert meta["text_enabled"] is False
+    assert int(meta["text_cells"]) == 0
+    assert int(meta["pocket_cells"]) == 0
+    assert (points[:, 2] < args.plate_thickness).any()
+    front_plate_points = points[
+        (points[:, 2] >= args.plate_thickness - 0.001)
+        & (points[:, 2] <= args.plate_thickness + 0.001)
+    ]
+    assert len(front_plate_points) > 0
+
+
+def test_no_text_cli_skips_and_removes_plate_text_stl() -> None:
+    default_python = shutil.which("python3")
+    if not default_python:
+        raise AssertionError("python3 was not found on PATH")
+
+    root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+    script = os.path.join(root, "outputs", "plant_sign_generator.py")
+    tmp = os.path.join(root, "work", "test-no-text-output")
+    os.makedirs(tmp, exist_ok=True)
+    stale_text = os.path.join(tmp, "plate_text.stl")
+    with open(stale_text, "wb") as f:
+        f.write(b"stale")
+
+    result = subprocess.run(
+        [default_python, script, "--no-text", "--outdir", tmp],
+        cwd=root,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        timeout=30,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert os.path.exists(os.path.join(tmp, "plate_base.stl"))
+    assert not os.path.exists(stale_text)
+    assert "Skipped" in result.stdout
+
+
 def main() -> int:
     tests = [
         test_image_mask_top_row_maps_to_model_top_row,
@@ -186,6 +231,8 @@ def main() -> int:
         test_multiline_text_accepts_per_line_fonts,
         test_default_holder_fits_12mm_rebar,
         test_default_holder_uses_filled_transition,
+        test_no_text_builds_flat_plate_without_text_mesh,
+        test_no_text_cli_skips_and_removes_plate_text_stl,
     ]
     failed = 0
     for test in tests:

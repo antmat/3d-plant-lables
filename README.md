@@ -40,6 +40,12 @@ printf 'яблоня\nMalus domestica\n' | python3 outputs/plant_sign_generator.
   --outdir outputs
 ```
 
+Generate a blank sign without text or `plate_text.stl`:
+
+```bash
+python3 outputs/plant_sign_generator.py --no-text --outdir outputs
+```
+
 Per-line options repeat the last value when there are more lines than values:
 
 ```bash

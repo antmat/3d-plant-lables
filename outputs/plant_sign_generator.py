@@ -570,7 +570,7 @@ def add_blind_tube_y(
         mesh.tri(c_inner_top, inner_top[n], inner_top[k])
 
 
-def build_meshes(args: argparse.Namespace) -> tuple[Mesh, Mesh, dict[str, object]]:
+def build_meshes(args: argparse.Namespace) -> tuple[Mesh, Mesh | None, dict[str, object]]:
     nx = int(round(args.plate_width / args.resolution))
     ny = int(round(args.plate_height / args.resolution))
     x_edges = np.linspace(-args.plate_width / 2.0, args.plate_width / 2.0, nx + 1)
@@ -578,29 +578,35 @@ def build_meshes(args: argparse.Namespace) -> tuple[Mesh, Mesh, dict[str, object
     x_centers = (x_edges[:-1] + x_edges[1:]) / 2.0
     y_centers = (y_edges[:-1] + y_edges[1:]) / 2.0
 
-    args.text = args.text or DEFAULT_TEXT
     font = existing_font(args.font)
     occupied = rounded_rect_occupancy(x_centers, y_centers, args.plate_width, args.plate_height, args.corner_radius)
-    text_layout = render_text_layout(
-        args.text,
-        font,
-        args.line_font,
-        args.line_size,
-        nx,
-        ny,
-        args.plate_width,
-        args.plate_height,
-        args.text_margin_x,
-        args.text_margin_y,
-        args.line_spacing,
-        args.antialias,
-        args.text_threshold,
-    )
-    text_mask = text_layout.mask
-    text_mask = image_mask_to_model_mask(text_mask)
-    text_mask &= occupied
-    text_mask = fill_diagonal_contacts(text_mask) & occupied
-    pocket_mask = dilate_mask(text_mask, args.pocket_clearance, args.resolution) & occupied
+    text_enabled = not args.no_text
+    if text_enabled:
+        args.text = args.text or DEFAULT_TEXT
+        text_layout = render_text_layout(
+            args.text,
+            font,
+            args.line_font,
+            args.line_size,
+            nx,
+            ny,
+            args.plate_width,
+            args.plate_height,
+            args.text_margin_x,
+            args.text_margin_y,
+            args.line_spacing,
+            args.antialias,
+            args.text_threshold,
+        )
+        text_mask = text_layout.mask
+        text_mask = image_mask_to_model_mask(text_mask)
+        text_mask &= occupied
+        text_mask = fill_diagonal_contacts(text_mask) & occupied
+        pocket_mask = dilate_mask(text_mask, args.pocket_clearance, args.resolution) & occupied
+    else:
+        text_layout = TextLayout(np.zeros_like(occupied), 0, [], [])
+        text_mask = text_layout.mask
+        pocket_mask = text_mask
 
     base = Mesh("plant_sign_base")
     add_heightfield_plate(base, occupied, pocket_mask, x_edges, y_edges, args.plate_thickness, args.text_depth)
@@ -634,18 +640,21 @@ def build_meshes(args: argparse.Namespace) -> tuple[Mesh, Mesh, dict[str, object
         args.transition_segments,
     )
 
-    text = Mesh("plant_sign_text")
-    add_mask_solid(
-        text,
-        text_mask,
-        x_edges,
-        y_edges,
-        args.plate_thickness - args.text_depth,
-        args.plate_thickness + args.text_proud,
-    )
+    text = None
+    if text_enabled:
+        text = Mesh("plant_sign_text")
+        add_mask_solid(
+            text,
+            text_mask,
+            x_edges,
+            y_edges,
+            args.plate_thickness - args.text_depth,
+            args.plate_thickness + args.text_proud,
+        )
 
     if args.orientation == "face-down":
-        orient_face_down([base, text], args.plate_thickness + max(args.text_proud, 0.0))
+        meshes = [base] if text is None else [base, text]
+        orient_face_down(meshes, args.plate_thickness + max(args.text_proud, 0.0))
 
     meta = {
         "font": font,
@@ -653,7 +662,8 @@ def build_meshes(args: argparse.Namespace) -> tuple[Mesh, Mesh, dict[str, object
         "text_cells": int(text_mask.sum()),
         "pocket_cells": int(pocket_mask.sum()),
         "base_triangles": len(base.triangles),
-        "text_triangles": len(text.triangles),
+        "text_enabled": text_enabled,
+        "text_triangles": 0 if text is None else len(text.triangles),
         "channel_diameter": holder_inner * 2.0,
         "orientation": args.orientation,
         "transition_triangles": transition_triangles,
@@ -666,8 +676,9 @@ def build_meshes(args: argparse.Namespace) -> tuple[Mesh, Mesh, dict[str, object
 
 
 def parser() -> argparse.ArgumentParser:
-    p = argparse.ArgumentParser(description="Generate two aligned STL files for a plant sign.")
+    p = argparse.ArgumentParser(description="Generate aligned STL files for a plant sign.")
     p.add_argument("--text", default=None, help="Text to put on the sign. Use '-' to read stdin.")
+    p.add_argument("--no-text", action="store_true", help="Generate only plate_base.stl with no text recess or plate_text.stl.")
     p.add_argument("--outdir", default="outputs", help="Directory for plate_base.stl and plate_text.stl.")
     p.add_argument("--font", default=DEFAULT_FONT, help="Path to a TTF/OTF font with Cyrillic support.")
     p.add_argument("--line-font", action="append", default=None, help="Repeatable per-line font path. Last value repeats.")
@@ -702,17 +713,25 @@ def parser() -> argparse.ArgumentParser:
 
 def main() -> None:
     args = parser().parse_args()
-    args.text = resolve_text(args)
+    if not args.no_text:
+        args.text = resolve_text(args)
     os.makedirs(args.outdir, exist_ok=True)
     base, text, meta = build_meshes(args)
 
     base_path = os.path.join(args.outdir, "plate_base.stl")
     text_path = os.path.join(args.outdir, "plate_text.stl")
     write_binary_stl(base, base_path)
-    write_binary_stl(text, text_path)
+    if text is None:
+        if os.path.exists(text_path):
+            os.remove(text_path)
+    else:
+        write_binary_stl(text, text_path)
 
     print(f"Generated {base_path}")
-    print(f"Generated {text_path}")
+    if text is None:
+        print(f"Skipped {text_path}")
+    else:
+        print(f"Generated {text_path}")
     for key, value in meta.items():
         print(f"{key}: {value}")
 

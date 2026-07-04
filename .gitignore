@@ -4,4 +4,5 @@ __pycache__/
 work/plant_sign_generator/text_preview_fixed.png
 work/test-default-python-output/
 work/test-multiline-output/
+work/test-no-text-output/
 outputs/outputs/

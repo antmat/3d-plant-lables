@@ -57,6 +57,17 @@ printf 'яблоня\nMalus domestica\n' | python3 outputs/plant_sign_generator.
 Если в обычном `python3` нет `numpy` или `Pillow`, скрипт автоматически
 перезапустится через bundled Codex Python, когда он доступен на этой машине.
 
+## Табличка без текста
+
+Чтобы получить чистую табличку без паза под надпись и без `plate_text.stl`:
+
+```bash
+python3 outputs/plant_sign_generator.py --no-text --outdir outputs
+```
+
+В этом режиме старый `plate_text.stl` в выходной папке удаляется, чтобы его
+случайно не импортировать в Bambu Studio.
+
 Полезные параметры:
 
 ```bash
