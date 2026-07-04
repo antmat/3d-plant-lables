@@ -35,6 +35,13 @@ python3 outputs/plant_sign_generator.py --text "груша" --outdir outputs
 python3 plant_sign_generator.py --text "груша" --outdir .
 ```
 
+Опция `--top-scrolls` добавляет два декоративных завитка сверху во второй цвет
+вместе с надписью:
+
+```bash
+python3 outputs/plant_sign_generator.py --text "яблоня" --top-scrolls --outdir outputs
+```
+
 Многострочный текст можно передать через stdin, не указывая `--text`:
 
 ```bash
@@ -75,6 +82,7 @@ python3 outputs/plant_sign_generator.py --no-text --outdir outputs
 --resolution 0.3              # более гладкий текст, но STL будет крупнее
 --rod-clearance 0.8           # увеличить отверстие под арматуру
 --holder-length 70            # сделать держатель длиннее
+--top-scrolls                 # добавить декоративные завитки сверху
 --text-margin-x 10            # дать тексту больше ширины
 --text-depth 0.8              # глубина вплавления текста
 --line-size 24                # размер первой строки в мм

@@ -31,6 +31,12 @@ Generate another label:
 python3 outputs/plant_sign_generator.py --text "груша" --outdir outputs
 ```
 
+Generate the default label with second-color top scrolls:
+
+```bash
+python3 outputs/plant_sign_generator.py --text "яблоня" --top-scrolls --outdir outputs
+```
+
 Generate multiline text from stdin:
 
 ```bash
