@@ -2,4 +2,5 @@ __pycache__/
 *.pyc
 .DS_Store
 work/plant_sign_generator/text_preview_fixed.png
-
+work/test-default-python-output/
+outputs/outputs/

@@ -26,6 +26,8 @@ Run tests:
 Generate another label:
 
 ```bash
-/Users/antmat/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/bin/python3 outputs/plant_sign_generator.py --text "груша" --outdir outputs
+python3 outputs/plant_sign_generator.py --text "груша" --outdir outputs
 ```
 
+If your default Python does not have `numpy` and `Pillow`, the script will
+re-run itself with the bundled Codex Python runtime when it is available.

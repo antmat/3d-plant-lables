@@ -3,6 +3,10 @@
 
 from __future__ import annotations
 
+import os
+import shutil
+import subprocess
+
 import numpy as np
 
 import generate_plant_sign as gen
@@ -63,12 +67,34 @@ def test_default_text_mesh_has_manifold_edges() -> None:
     assert bad_edges == {}
 
 
+def test_public_generator_runs_with_default_python() -> None:
+    default_python = shutil.which("python3")
+    if not default_python:
+        raise AssertionError("python3 was not found on PATH")
+
+    root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+    script = os.path.join(root, "outputs", "plant_sign_generator.py")
+    result = subprocess.run(
+        [default_python, script, "--help"],
+        cwd=root,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        timeout=10,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "ModuleNotFoundError" not in result.stderr
+    assert "Generate two aligned STL files" in result.stdout
+
+
 def main() -> int:
     tests = [
         test_image_mask_top_row_maps_to_model_top_row,
         test_default_mesh_is_oriented_face_down_for_printing,
         test_default_base_mesh_has_manifold_edges,
         test_default_text_mesh_has_manifold_edges,
+        test_public_generator_runs_with_default_python,
     ]
     failed = 0
     for test in tests:

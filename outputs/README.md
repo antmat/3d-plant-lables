@@ -21,11 +21,20 @@
 
 ## Создание другой надписи
 
-Из корня этой папки:
+Из корня репозитория:
 
 ```bash
-/Users/antmat/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/bin/python3 outputs/plant_sign_generator.py --text "груша" --outdir outputs
+python3 outputs/plant_sign_generator.py --text "груша" --outdir outputs
 ```
+
+Если вы уже находитесь внутри папки `outputs`:
+
+```bash
+python3 plant_sign_generator.py --text "груша" --outdir .
+```
+
+Если в обычном `python3` нет `numpy` или `Pillow`, скрипт автоматически
+перезапустится через bundled Codex Python, когда он доступен на этой машине.
 
 Полезные параметры:
 

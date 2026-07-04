@@ -4,11 +4,54 @@
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import math
 import os
 import struct
+import sys
 from dataclasses import dataclass, field
 from typing import Iterable
+
+
+REQUIRED_MODULES = {
+    "numpy": "numpy",
+    "PIL": "Pillow",
+}
+BUNDLED_PYTHON = os.path.expanduser(
+    "~/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/bin/python3"
+)
+
+
+def missing_dependencies() -> list[str]:
+    missing = []
+    for module_name, package_name in REQUIRED_MODULES.items():
+        if importlib.util.find_spec(module_name) is None:
+            missing.append(package_name)
+    return missing
+
+
+def ensure_dependencies() -> None:
+    missing = missing_dependencies()
+    if not missing:
+        return
+
+    current = os.path.realpath(sys.executable)
+    bundled = os.path.realpath(BUNDLED_PYTHON)
+    if os.path.exists(BUNDLED_PYTHON) and current != bundled:
+        os.execv(BUNDLED_PYTHON, [BUNDLED_PYTHON, *sys.argv])
+
+    packages = " ".join(sorted(set(missing)))
+    raise SystemExit(
+        "Missing Python dependencies: "
+        + packages
+        + "\nInstall them with:\n"
+        + f"  {sys.executable} -m pip install {packages}\n"
+        + "or run with the bundled Codex Python:\n"
+        + f"  {BUNDLED_PYTHON} {sys.argv[0]}"
+    )
+
+
+ensure_dependencies()
 
 import numpy as np
 from PIL import Image, ImageDraw, ImageFilter, ImageFont
