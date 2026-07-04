@@ -612,7 +612,7 @@ def build_holder_mesh(args: argparse.Namespace, holder_length: float) -> tuple[M
         0.0,
         holder_length,
         args.resolution,
-        [0.0, holder_length - args.holder_cap_thickness, holder_length],
+        [0.0, args.holder_cap_thickness, holder_length],
     )
     x_centers = (x_edges[:-1] + x_edges[1:]) / 2.0
     y_centers = (y_edges[:-1] + y_edges[1:]) / 2.0
@@ -627,7 +627,7 @@ def build_holder_mesh(args: argparse.Namespace, holder_length: float) -> tuple[M
     outer_profile = body | tenon
 
     channel_profile = xx * xx + yy * yy <= inner_radius * inner_radius
-    channel_z = z_centers < holder_length - args.holder_cap_thickness
+    channel_z = z_centers >= args.holder_cap_thickness
     solid = outer_profile[np.newaxis, :, :] & np.ones((len(z_centers), 1, 1), dtype=bool)
     channel = channel_z[:, np.newaxis, np.newaxis] & channel_profile[np.newaxis, :, :]
     solid &= ~channel

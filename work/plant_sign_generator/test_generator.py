@@ -56,6 +56,17 @@ def connected_component_count(mesh: gen.Mesh) -> int:
     return len({find(index) for index in range(len(mesh.triangles))})
 
 
+def horizontal_center_triangles(mesh: gen.Mesh, z: float, radius: float = 2.0) -> list[gen.Tri]:
+    triangles = []
+    for tri in mesh.triangles:
+        if not all(abs(point[2] - z) < 1e-5 for point in tri):
+            continue
+        centroid = np.array(tri, dtype=float).mean(axis=0)
+        if abs(float(centroid[0])) <= radius and abs(float(centroid[1])) <= radius:
+            triangles.append(tri)
+    return triangles
+
+
 def test_image_mask_top_row_maps_to_model_top_row() -> None:
     image_mask = np.zeros((5, 4), dtype=bool)
     image_mask[0, 2] = True
@@ -236,6 +247,18 @@ def test_default_plate_uses_dovetail_holder() -> None:
     assert holder.triangles
 
 
+def test_holder_channel_has_blind_end_on_print_bed() -> None:
+    args = gen.parser().parse_args(["--no-text", "--outdir", "outputs"])
+    _, _, holder, _ = gen.build_meshes(args)
+    holder_min, holder_max = bbox(holder)
+
+    bottom_center = horizontal_center_triangles(holder, float(holder_min[2]))
+    top_center = horizontal_center_triangles(holder, float(holder_max[2]))
+
+    assert bottom_center
+    assert top_center == []
+
+
 def test_dovetail_base_and_holder_are_manifold() -> None:
     args = gen.parser().parse_args(["--text", "яблоня", "--outdir", "outputs", "--orientation", "front-up"])
     base, text, holder, meta = gen.build_meshes(args)
@@ -358,6 +381,7 @@ def main() -> int:
         test_top_scrolls_default_off,
         test_top_scrolls_add_second_color_geometry_near_top_corners,
         test_default_plate_uses_dovetail_holder,
+        test_holder_channel_has_blind_end_on_print_bed,
         test_dovetail_base_and_holder_are_manifold,
         test_dovetail_socket_is_open_at_bottom_and_closed_at_top,
         test_no_text_builds_flat_plate_without_text_mesh,

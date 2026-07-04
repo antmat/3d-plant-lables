@@ -10,8 +10,8 @@ Default model:
 - Holder channel: 12.6 mm.
 - Holder outer diameter: 20 mm.
 - Text: `яблоня`, exported as a separate aligned STL for AMS / dual-nozzle printing.
-- Print orientation: the plate is face down, so printing starts from the flat sign face and text.
-- Assembly: slide `holder.stl` into the rear socket from the bottom; the closed top of the socket is the stop.
+- Print orientation: the plate is face down; `holder.stl` prints vertically with the blind end on the build plate and the channel open upward.
+- Assembly: after printing, flip the holder as needed and slide it into the rear socket from the bottom; the closed top of the socket is the stop.
 
 User-facing files are in `outputs/`:
 
