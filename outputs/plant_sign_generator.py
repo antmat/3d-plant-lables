@@ -477,6 +477,11 @@ def axis_edges(start: float, stop: float, resolution: float, specials: Iterable[
     return np.array([rounded[key] for key in sorted(rounded)], dtype=float)
 
 
+def dovetail_width_at_depth(z_from_rear: np.ndarray, neck_width: float, head_width: float, depth: float) -> np.ndarray:
+    t = np.clip(z_from_rear / max(depth, 1e-6), 0.0, 1.0)
+    return neck_width + (head_width - neck_width) * t
+
+
 def add_voxel_solid(
     mesh: Mesh,
     solid: np.ndarray,
@@ -537,12 +542,12 @@ def add_voxel_base(
     z_edges: np.ndarray,
     plate_thickness: float,
     text_depth: float,
-    holder_outer: float,
-    holder_inner: float,
-    holder_center_z: float,
-    holder_y_min: float,
-    holder_y_max: float,
-    holder_cap_thickness: float,
+    socket_y_min: float,
+    socket_y_max: float,
+    dovetail_depth: float,
+    dovetail_head_width: float,
+    dovetail_neck_width: float,
+    dovetail_clearance: float,
 ) -> dict[str, int]:
     x_centers = (x_edges[:-1] + x_edges[1:]) / 2.0
     y_centers = (y_edges[:-1] + y_edges[1:]) / 2.0
@@ -555,48 +560,110 @@ def add_voxel_base(
         & (z_centers[:, np.newaxis, np.newaxis] < top_z[np.newaxis, :, :])
     )
 
-    xx = x_centers[np.newaxis, :]
-    zz = z_centers[:, np.newaxis]
-    outer_bottom = holder_center_z - np.sqrt(np.maximum(holder_outer * holder_outer - xx * xx, 0.0))
-    outer_profile = (np.abs(xx) <= holder_outer) & (zz >= outer_bottom) & (zz < 0.0)
-    holder_y = (y_centers >= holder_y_min) & (y_centers < holder_y_max)
-    holder = outer_profile[:, np.newaxis, :] & holder_y[np.newaxis, :, np.newaxis]
+    xx = x_centers[np.newaxis, np.newaxis, :]
+    yy = y_centers[np.newaxis, :, np.newaxis]
+    zz = z_centers[:, np.newaxis, np.newaxis]
+    socket_z = (zz >= 0.0) & (zz < dovetail_depth)
+    socket_y = (yy >= socket_y_min) & (yy < socket_y_max)
+    socket_width = dovetail_width_at_depth(
+        zz,
+        dovetail_neck_width + 2.0 * dovetail_clearance,
+        dovetail_head_width + 2.0 * dovetail_clearance,
+        dovetail_depth,
+    )
+    socket = socket_z & socket_y & (np.abs(xx) <= socket_width / 2.0)
 
-    inner_profile = xx * xx + (zz - holder_center_z) * (zz - holder_center_z) <= holder_inner * holder_inner
-    inner_top_y = holder_y_max - holder_cap_thickness
-    channel_y = (y_centers >= holder_y_min) & (y_centers < inner_top_y)
-    channel = inner_profile[:, np.newaxis, :] & channel_y[np.newaxis, :, np.newaxis]
-    holder &= ~channel
-
-    solid = plate | holder
+    solid = plate & ~socket
     add_voxel_solid(mesh, solid, x_edges, y_edges, z_edges)
     return {
         "solid_cells": int(solid.sum()),
-        "holder_cells": int(holder.sum()),
+        "socket_cells": int(socket.sum()),
+    }
+
+
+def build_holder_mesh(args: argparse.Namespace, holder_length: float) -> tuple[Mesh, dict[str, int]]:
+    mesh = Mesh("plant_sign_holder")
+    outer_radius = args.holder_outer_diameter / 2.0
+    inner_radius = args.rod_diameter / 2.0 + args.rod_clearance / 2.0
+    attach_y = -outer_radius + args.dovetail_depth
+    y_min = attach_y - args.dovetail_depth
+    y_max = outer_radius
+    x_limit = max(outer_radius, args.dovetail_head_width / 2.0)
+    x_edges = axis_edges(
+        -x_limit,
+        x_limit,
+        args.resolution,
+        [
+            -args.dovetail_head_width / 2.0,
+            -args.dovetail_neck_width / 2.0,
+            -inner_radius,
+            inner_radius,
+            args.dovetail_neck_width / 2.0,
+            args.dovetail_head_width / 2.0,
+        ],
+    )
+    y_edges = axis_edges(
+        y_min,
+        y_max,
+        args.resolution,
+        [attach_y, -inner_radius, inner_radius, y_min, y_max],
+    )
+    z_edges = axis_edges(
+        0.0,
+        holder_length,
+        args.resolution,
+        [0.0, holder_length - args.holder_cap_thickness, holder_length],
+    )
+    x_centers = (x_edges[:-1] + x_edges[1:]) / 2.0
+    y_centers = (y_edges[:-1] + y_edges[1:]) / 2.0
+    z_centers = (z_edges[:-1] + z_edges[1:]) / 2.0
+
+    xx = x_centers[np.newaxis, :]
+    yy = y_centers[:, np.newaxis]
+    body = (xx * xx + yy * yy <= outer_radius * outer_radius) & (yy >= attach_y)
+    tenon_depth = np.clip((attach_y - yy) / max(args.dovetail_depth, 1e-6), 0.0, 1.0)
+    tenon_width = args.dovetail_neck_width + (args.dovetail_head_width - args.dovetail_neck_width) * tenon_depth
+    tenon = (yy <= attach_y) & (yy >= y_min) & (np.abs(xx) <= tenon_width / 2.0)
+    outer_profile = body | tenon
+
+    channel_profile = xx * xx + yy * yy <= inner_radius * inner_radius
+    channel_z = z_centers < holder_length - args.holder_cap_thickness
+    solid = outer_profile[np.newaxis, :, :] & np.ones((len(z_centers), 1, 1), dtype=bool)
+    channel = channel_z[:, np.newaxis, np.newaxis] & channel_profile[np.newaxis, :, :]
+    solid &= ~channel
+
+    add_voxel_solid(mesh, solid, x_edges, y_edges, z_edges)
+    return mesh, {
+        "holder_cells": int(solid.sum()),
         "channel_cells": int(channel.sum()),
     }
 
 
-def build_meshes(args: argparse.Namespace) -> tuple[Mesh, Mesh | None, dict[str, object]]:
-    holder_outer = args.holder_outer_diameter / 2.0
+def build_meshes(args: argparse.Namespace) -> tuple[Mesh, Mesh | None, Mesh, dict[str, object]]:
     holder_inner = args.rod_diameter / 2.0 + args.rod_clearance / 2.0
-    holder_center_z = -holder_outer + args.holder_embed
-    y_min = -args.holder_length / 2.0
-    y_max = args.holder_length / 2.0
-    inner_top_y = y_max - args.holder_cap_thickness
-    z_min = min(0.0, holder_center_z - holder_outer)
+    holder_length = args.holder_length
+    if holder_length is None:
+        holder_length = args.plate_height - args.holder_top_margin
+    socket_y_min = -args.plate_height / 2.0
+    socket_y_max = socket_y_min + holder_length
+    z_min = 0.0
     z_max = args.plate_thickness
     x_edges = axis_edges(
         -args.plate_width / 2.0,
         args.plate_width / 2.0,
         args.resolution,
-        [-holder_outer, holder_outer],
+        [
+            -args.dovetail_head_width / 2.0,
+            -args.dovetail_neck_width / 2.0,
+            args.dovetail_neck_width / 2.0,
+            args.dovetail_head_width / 2.0,
+        ],
     )
     y_edges = axis_edges(
         -args.plate_height / 2.0,
         args.plate_height / 2.0,
         args.resolution,
-        [y_min, inner_top_y, y_max],
+        [socket_y_min, socket_y_max],
     )
     z_edges = axis_edges(
         z_min,
@@ -604,11 +671,9 @@ def build_meshes(args: argparse.Namespace) -> tuple[Mesh, Mesh | None, dict[str,
         args.resolution,
         [
             0.0,
+            args.dovetail_depth,
             args.plate_thickness - args.text_depth,
             args.plate_thickness,
-            holder_center_z - holder_outer,
-            holder_center_z - holder_inner,
-            holder_center_z + holder_inner,
         ],
     )
     nx = len(x_edges) - 1
@@ -671,19 +736,13 @@ def build_meshes(args: argparse.Namespace) -> tuple[Mesh, Mesh | None, dict[str,
         z_edges,
         args.plate_thickness,
         args.text_depth,
-        holder_outer,
-        holder_inner,
-        holder_center_z,
-        y_min,
-        y_max,
-        args.holder_cap_thickness,
+        socket_y_min,
+        socket_y_max,
+        args.dovetail_depth,
+        args.dovetail_head_width,
+        args.dovetail_neck_width,
+        args.dovetail_clearance,
     )
-    transition_margin = min(
-        max(args.transition_end_margin, 0.0),
-        max(args.holder_length / 2.0 - 0.001, 0.0),
-    )
-    transition_y_min = y_min + transition_margin
-    transition_y_max = y_max - transition_margin
 
     text = None
     if text_enabled:
@@ -696,6 +755,8 @@ def build_meshes(args: argparse.Namespace) -> tuple[Mesh, Mesh | None, dict[str,
             args.plate_thickness - args.text_depth,
             args.plate_thickness + args.text_proud,
         )
+
+    holder, holder_stats = build_holder_mesh(args, holder_length)
 
     if args.orientation == "face-down":
         meshes = [base] if text is None else [base, text]
@@ -710,31 +771,33 @@ def build_meshes(args: argparse.Namespace) -> tuple[Mesh, Mesh | None, dict[str,
         "base_triangles": len(base.triangles),
         "text_enabled": text_enabled,
         "text_triangles": 0 if text is None else len(text.triangles),
+        "holder_triangles": len(holder.triangles),
         "channel_diameter": holder_inner * 2.0,
         "orientation": args.orientation,
-        "transition_length": transition_y_max - transition_y_min,
+        "holder_length": holder_length,
         "line_count": text_layout.line_count,
         "font_paths": ", ".join(text_layout.font_paths),
         "font_pixel_sizes": ", ".join(str(size) for size in text_layout.font_pixel_sizes),
         "solid_cells": solid_stats["solid_cells"],
-        "holder_cells": solid_stats["holder_cells"],
-        "channel_cells": solid_stats["channel_cells"],
+        "socket_cells": solid_stats["socket_cells"],
+        "holder_cells": holder_stats["holder_cells"],
+        "channel_cells": holder_stats["channel_cells"],
     }
-    return base, text, meta
+    return base, text, holder, meta
 
 
 def parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(description="Generate aligned STL files for a plant sign.")
     p.add_argument("--text", default=None, help="Text to put on the sign. Use '-' to read stdin.")
-    p.add_argument("--no-text", action="store_true", help="Generate only plate_base.stl with no text recess or plate_text.stl.")
-    p.add_argument("--outdir", default="outputs", help="Directory for plate_base.stl and plate_text.stl.")
+    p.add_argument("--no-text", action="store_true", help="Generate plate_base.stl and holder.stl with no text recess or plate_text.stl.")
+    p.add_argument("--outdir", default="outputs", help="Directory for plate_base.stl, plate_text.stl, and holder.stl.")
     p.add_argument("--font", default=DEFAULT_FONT, help="Path to a TTF/OTF font with Cyrillic support.")
     p.add_argument("--line-font", action="append", default=None, help="Repeatable per-line font path. Last value repeats.")
     p.add_argument("--line-size", action="append", type=float, default=None, help="Repeatable per-line font size in mm. Last value repeats.")
     p.add_argument("--line-spacing", type=float, default=1.18, help="Line spacing multiplier.")
     p.add_argument("--plate-width", type=float, default=180.0)
     p.add_argument("--plate-height", type=float, default=90.0)
-    p.add_argument("--plate-thickness", type=float, default=4.0)
+    p.add_argument("--plate-thickness", type=float, default=6.0)
     p.add_argument("--corner-radius", type=float, default=4.0)
     p.add_argument("--resolution", type=float, default=0.4, help="XY mesh cell size in mm.")
     p.add_argument("--text-depth", type=float, default=0.8)
@@ -752,9 +815,15 @@ def parser() -> argparse.ArgumentParser:
     p.add_argument("--rod-diameter", type=float, default=12.0)
     p.add_argument("--rod-clearance", type=float, default=0.6)
     p.add_argument("--holder-outer-diameter", type=float, default=20.0)
-    p.add_argument("--holder-length", type=float, default=65.0)
+    p.add_argument("--holder-style", choices=["dovetail"], default="dovetail")
+    p.add_argument("--holder-length", type=float, default=None)
+    p.add_argument("--holder-top-margin", type=float, default=12.0)
     p.add_argument("--holder-cap-thickness", type=float, default=4.0)
-    p.add_argument("--holder-embed", type=float, default=2.0)
+    p.add_argument("--dovetail-depth", type=float, default=3.0)
+    p.add_argument("--dovetail-head-width", type=float, default=20.0)
+    p.add_argument("--dovetail-neck-width", type=float, default=14.0)
+    p.add_argument("--dovetail-clearance", type=float, default=0.35)
+    p.add_argument("--holder-embed", type=float, default=2.0, help=argparse.SUPPRESS)
     p.add_argument("--holder-segments", type=int, default=96, help=argparse.SUPPRESS)
     p.add_argument("--transition-plate-overlap", type=float, default=0.8, help=argparse.SUPPRESS)
     p.add_argument("--transition-cylinder-overlap", type=float, default=0.4, help=argparse.SUPPRESS)
@@ -769,11 +838,13 @@ def main() -> None:
     if not args.no_text:
         args.text = resolve_text(args)
     os.makedirs(args.outdir, exist_ok=True)
-    base, text, meta = build_meshes(args)
+    base, text, holder, meta = build_meshes(args)
 
     base_path = os.path.join(args.outdir, "plate_base.stl")
     text_path = os.path.join(args.outdir, "plate_text.stl")
+    holder_path = os.path.join(args.outdir, "holder.stl")
     write_binary_stl(base, base_path)
+    write_binary_stl(holder, holder_path)
     if text is None:
         if os.path.exists(text_path):
             os.remove(text_path)
@@ -785,6 +856,7 @@ def main() -> None:
         print(f"Skipped {text_path}")
     else:
         print(f"Generated {text_path}")
+    print(f"Generated {holder_path}")
     for key, value in meta.items():
         print(f"{key}: {value}")
 

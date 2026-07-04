@@ -68,7 +68,7 @@ def test_image_mask_top_row_maps_to_model_top_row() -> None:
 
 def test_default_mesh_is_oriented_face_down_for_printing() -> None:
     args = gen.parser().parse_args(["--text", "яблоня", "--outdir", "outputs"])
-    base, text, _ = gen.build_meshes(args)
+    base, text, _, _ = gen.build_meshes(args)
 
     base_min, base_max = bbox(base)
     text_min, text_max = bbox(text)
@@ -76,12 +76,12 @@ def test_default_mesh_is_oriented_face_down_for_printing() -> None:
     assert min(base_min[2], text_min[2]) >= -0.001
     assert text_min[2] <= 0.001
     assert text_max[2] <= args.text_depth + 0.001
-    assert base_max[2] > args.plate_thickness + args.holder_outer_diameter - args.holder_embed - 1.0
+    assert abs((base_max[2] - base_min[2]) - args.plate_thickness) < 0.001
 
 
 def test_default_base_mesh_has_manifold_edges() -> None:
     args = gen.parser().parse_args(["--text", "яблоня", "--outdir", "outputs"])
-    base, _, _ = gen.build_meshes(args)
+    base, _, _, _ = gen.build_meshes(args)
 
     bad_edges = non_manifold_edges(base)
 
@@ -90,7 +90,7 @@ def test_default_base_mesh_has_manifold_edges() -> None:
 
 def test_default_text_mesh_has_manifold_edges() -> None:
     args = gen.parser().parse_args(["--text", "яблоня", "--outdir", "outputs"])
-    _, text, _ = gen.build_meshes(args)
+    _, text, _, _ = gen.build_meshes(args)
 
     bad_edges = non_manifold_edges(text)
 
@@ -145,7 +145,7 @@ def test_multiline_text_with_line_sizes_generates_two_line_mask() -> None:
         "--outdir",
         "outputs",
     ])
-    base, text, meta = gen.build_meshes(args)
+    base, text, _, meta = gen.build_meshes(args)
     text_min, text_max = bbox(text)
 
     assert meta["line_count"] == 2
@@ -166,7 +166,7 @@ def test_multiline_text_accepts_per_line_fonts() -> None:
         "--outdir",
         "outputs",
     ])
-    _, _, meta = gen.build_meshes(args)
+    _, _, _, meta = gen.build_meshes(args)
 
     assert meta["line_count"] == 2
     assert georgia in meta["font_paths"]
@@ -174,14 +174,14 @@ def test_multiline_text_accepts_per_line_fonts() -> None:
 
 def test_top_scrolls_default_off() -> None:
     args = gen.parser().parse_args(["--text", "яблоня", "--outdir", "outputs"])
-    _, _, meta = gen.build_meshes(args)
+    _, _, _, meta = gen.build_meshes(args)
 
     assert int(meta["scroll_cells"]) == 0
 
 
 def test_top_scrolls_add_second_color_geometry_near_top_corners() -> None:
     args_plain = gen.parser().parse_args(["--text", "яблоня", "--outdir", "outputs", "--orientation", "front-up"])
-    _, text_plain, meta_plain = gen.build_meshes(args_plain)
+    _, text_plain, _, meta_plain = gen.build_meshes(args_plain)
     try:
         args_scrolls = gen.parser().parse_args([
             "--text",
@@ -195,7 +195,7 @@ def test_top_scrolls_add_second_color_geometry_near_top_corners() -> None:
     except SystemExit as exc:
         raise AssertionError("--top-scrolls should be accepted") from exc
 
-    base_scrolls, text_scrolls, meta_scrolls = gen.build_meshes(args_scrolls)
+    base_scrolls, text_scrolls, _, meta_scrolls = gen.build_meshes(args_scrolls)
     points = np.array([point for tri in text_scrolls.triangles for point in tri], dtype=float)
     top_left = points[
         (points[:, 0] < -args_scrolls.plate_width / 2.0 + args_scrolls.scroll_margin_x + args_scrolls.scroll_width + 2.0)
@@ -216,50 +216,66 @@ def test_top_scrolls_add_second_color_geometry_near_top_corners() -> None:
     assert connected_component_count(base_scrolls) == 1
 
 
-def test_default_holder_fits_12mm_rebar() -> None:
+def test_default_plate_uses_dovetail_holder() -> None:
     args = gen.parser().parse_args(["--text", "яблоня", "--outdir", "outputs"])
-    base, _, meta = gen.build_meshes(args)
+    base, _, holder, meta = gen.build_meshes(args)
     base_min, base_max = bbox(base)
+    holder_min, holder_max = bbox(holder)
 
+    assert args.plate_thickness == 6.0
+    assert args.holder_style == "dovetail"
     assert args.rod_diameter == 12.0
     assert args.rod_clearance == 0.6
     assert args.holder_outer_diameter == 20.0
+    assert abs(float(meta["holder_length"]) - 78.0) < 0.001
     assert abs(float(meta["channel_diameter"]) - 12.6) < 0.001
-    assert abs((base_max[2] - base_min[2]) - 22.0) < 0.001
+    assert abs((base_max[2] - base_min[2]) - 6.0) < 0.001
+    assert abs((holder_max[2] - holder_min[2]) - 78.0) < 0.5
+    assert int(meta["socket_cells"]) > 0
+    assert int(meta["holder_cells"]) > 0
+    assert holder.triangles
 
 
-def test_default_holder_uses_filled_transition() -> None:
+def test_dovetail_base_and_holder_are_manifold() -> None:
     args = gen.parser().parse_args(["--text", "яблоня", "--outdir", "outputs", "--orientation", "front-up"])
-    base, _, meta = gen.build_meshes(args)
+    base, text, holder, meta = gen.build_meshes(args)
+
+    assert text is not None
+    assert non_manifold_edges(base) == {}
+    assert non_manifold_edges(holder) == {}
+    assert connected_component_count(base) == 1
+    assert connected_component_count(holder) == 1
+    assert int(meta["socket_cells"]) > 0
+
+
+def test_dovetail_socket_is_open_at_bottom_and_closed_at_top() -> None:
+    args = gen.parser().parse_args(["--no-text", "--outdir", "outputs", "--orientation", "front-up"])
+    base, _, _, _ = gen.build_meshes(args)
     points = np.array([point for tri in base.triangles for point in tri], dtype=float)
-    holder_radius = args.holder_outer_diameter / 2.0
-    holder_center_z = -holder_radius + args.holder_embed
-    contact_x = (holder_radius**2 - holder_center_z**2) ** 0.5
-    transition_points = points[
-        (points[:, 0] > contact_x + 0.5)
-        & (points[:, 0] <= holder_radius + 0.01)
-        & (points[:, 2] > -0.2)
+    socket_width = gen.dovetail_width_at_depth(
+        points[:, 2],
+        args.dovetail_neck_width + 2.0 * args.dovetail_clearance,
+        args.dovetail_head_width + 2.0 * args.dovetail_clearance,
+        args.dovetail_depth,
+    )
+    rear_socket_points = points[
+        (points[:, 1] < args.plate_height / 2.0 - 1.0)
+        & (points[:, 2] > 0.1)
+        & (points[:, 2] < args.dovetail_depth - 0.1)
+        & (np.abs(np.abs(points[:, 0]) - socket_width / 2.0) < 0.45)
     ]
 
-    assert int(meta["holder_cells"]) > 0
-    assert args.transition_end_margin == 0.0
-    assert abs(float(meta["transition_length"]) - args.holder_length) < 0.001
-    assert len(transition_points) > 0
-
-
-def test_base_plate_and_holder_are_one_shell() -> None:
-    args = gen.parser().parse_args(["--no-text", "--outdir", "outputs", "--orientation", "front-up"])
-    base, _, _ = gen.build_meshes(args)
-
-    assert connected_component_count(base) == 1
+    assert rear_socket_points[:, 1].min() <= -args.plate_height / 2.0 + 0.5
+    assert rear_socket_points[:, 1].max() < args.plate_height / 2.0 - args.holder_top_margin + 1.0
 
 
 def test_no_text_builds_flat_plate_without_text_mesh() -> None:
     args = gen.parser().parse_args(["--no-text", "--outdir", "outputs"])
-    base, text, meta = gen.build_meshes(args)
+    base, text, holder, meta = gen.build_meshes(args)
     points = np.array([point for tri in base.triangles for point in tri], dtype=float)
 
     assert text is None
+    assert holder.triangles
     assert meta["text_enabled"] is False
     assert int(meta["text_cells"]) == 0
     assert int(meta["pocket_cells"]) == 0
@@ -295,8 +311,37 @@ def test_no_text_cli_skips_and_removes_plate_text_stl() -> None:
 
     assert result.returncode == 0, result.stderr
     assert os.path.exists(os.path.join(tmp, "plate_base.stl"))
+    assert os.path.exists(os.path.join(tmp, "holder.stl"))
     assert not os.path.exists(stale_text)
     assert "Skipped" in result.stdout
+    assert "Generated" in result.stdout
+    assert "holder.stl" in result.stdout
+
+
+def test_cli_writes_holder_stl() -> None:
+    default_python = shutil.which("python3")
+    if not default_python:
+        raise AssertionError("python3 was not found on PATH")
+
+    root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+    script = os.path.join(root, "outputs", "plant_sign_generator.py")
+    tmp = os.path.join(root, "work", "test-holder-output")
+    os.makedirs(tmp, exist_ok=True)
+
+    result = subprocess.run(
+        [default_python, script, "--text", "груша", "--outdir", tmp],
+        cwd=root,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        timeout=30,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert os.path.exists(os.path.join(tmp, "plate_base.stl"))
+    assert os.path.exists(os.path.join(tmp, "plate_text.stl"))
+    assert os.path.exists(os.path.join(tmp, "holder.stl"))
+    assert "holder.stl" in result.stdout
 
 
 def main() -> int:
@@ -312,11 +357,12 @@ def main() -> int:
         test_multiline_text_accepts_per_line_fonts,
         test_top_scrolls_default_off,
         test_top_scrolls_add_second_color_geometry_near_top_corners,
-        test_default_holder_fits_12mm_rebar,
-        test_default_holder_uses_filled_transition,
-        test_base_plate_and_holder_are_one_shell,
+        test_default_plate_uses_dovetail_holder,
+        test_dovetail_base_and_holder_are_manifold,
+        test_dovetail_socket_is_open_at_bottom_and_closed_at_top,
         test_no_text_builds_flat_plate_without_text_mesh,
         test_no_text_cli_skips_and_removes_plate_text_stl,
+        test_cli_writes_holder_stl,
     ]
     failed = 0
     for test in tests:

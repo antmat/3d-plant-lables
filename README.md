@@ -4,18 +4,20 @@ Parametric generator and ready-to-print files for a two-color plant sign.
 
 Default model:
 
-- Plate: 180 x 90 x 4 mm.
-- Rear blind holder for 12 mm composite rebar.
+- Plate: 180 x 90 x 6 mm.
+- Rear dovetail socket for a separate holder.
+- Separate support-free holder for 12 mm composite rebar.
 - Holder channel: 12.6 mm.
 - Holder outer diameter: 20 mm.
-- Base topology: plate, holder, and filled transition are generated as one shell.
 - Text: `яблоня`, exported as a separate aligned STL for AMS / dual-nozzle printing.
-- Print orientation: face down, so printing starts from the flat sign face and text.
+- Print orientation: the plate is face down, so printing starts from the flat sign face and text.
+- Assembly: slide `holder.stl` into the rear socket from the bottom; the closed top of the socket is the stop.
 
 User-facing files are in `outputs/`:
 
 - `plate_base.stl`
 - `plate_text.stl`
+- `holder.stl`
 - `plant_sign_generator.py`
 - `README.md`
 
