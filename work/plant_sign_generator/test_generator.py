@@ -145,6 +145,12 @@ def test_resolve_text_uses_default_when_text_omitted_and_stdin_empty() -> None:
     assert text == "яблоня"
 
 
+def test_text_accepts_single_dash_alias() -> None:
+    args = gen.parser().parse_args(["-text", "Лобо\n\n2023"])
+
+    assert args.text == "Лобо\n\n2023"
+
+
 def test_multiline_text_with_line_sizes_generates_two_line_mask() -> None:
     args = gen.parser().parse_args([
         "--text",
@@ -228,7 +234,24 @@ def test_top_scrolls_add_second_color_geometry_near_top_corners() -> None:
 
 
 def test_all_top_scroll_styles_generate_corner_geometry() -> None:
-    styles = ["classic", "double-spiral", "vine", "laurel", "tulip", "wave"]
+    styles = [
+        "classic",
+        "double-spiral",
+        "vine",
+        "laurel",
+        "tulip",
+        "wave",
+        "baroque-curl",
+        "fiddlehead",
+        "arabesque",
+        "ribbon-curl",
+        "tendril-cascade",
+        "lightning",
+        "chevron",
+        "diamond-chain",
+        "circuit",
+        "sunburst",
+    ]
     for style in styles:
         args = gen.parser().parse_args([
             "--text",
@@ -400,6 +423,42 @@ def test_cli_writes_holder_stl() -> None:
     assert "holder.stl" in result.stdout
 
 
+def test_preview_script_writes_numbered_scroll_previews() -> None:
+    default_python = shutil.which("python3")
+    if not default_python:
+        raise AssertionError("python3 was not found on PATH")
+
+    root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+    script = os.path.join(root, "work", "plant_sign_generator", "render_scroll_previews.py")
+    tmp = os.path.join(root, "work", "test-scroll-previews")
+    result = subprocess.run(
+        [
+            default_python,
+            script,
+            "-text",
+            "Лобо\n\n2023",
+            "--line-size",
+            "28",
+            "--line-size",
+            "12",
+            "--outdir",
+            tmp,
+        ],
+        cwd=root,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        timeout=30,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert os.path.exists(os.path.join(tmp, "all_scroll_styles.png"))
+    for index in range(1, len(gen.SCROLL_STYLES) + 1):
+        assert os.path.exists(os.path.join(tmp, f"{index:02d}.png"))
+    assert "01.png" in result.stdout
+    assert "classic" not in result.stdout
+
+
 def main() -> int:
     tests = [
         test_image_mask_top_row_maps_to_model_top_row,
@@ -409,6 +468,7 @@ def main() -> int:
         test_public_generator_runs_with_default_python,
         test_resolve_text_reads_stdin_when_text_omitted,
         test_resolve_text_uses_default_when_text_omitted_and_stdin_empty,
+        test_text_accepts_single_dash_alias,
         test_multiline_text_with_line_sizes_generates_two_line_mask,
         test_multiline_text_accepts_per_line_fonts,
         test_top_scrolls_default_off,
@@ -421,6 +481,7 @@ def main() -> int:
         test_no_text_builds_flat_plate_without_text_mesh,
         test_no_text_cli_skips_and_removes_plate_text_stl,
         test_cli_writes_holder_stl,
+        test_preview_script_writes_numbered_scroll_previews,
     ]
     failed = 0
     for test in tests:

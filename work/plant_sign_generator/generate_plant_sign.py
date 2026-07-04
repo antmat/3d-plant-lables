@@ -59,7 +59,24 @@ from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
 DEFAULT_FONT = "/Library/Fonts/YS Text-Heavy.ttf"
 DEFAULT_TEXT = "яблоня"
-SCROLL_STYLES = ("classic", "double-spiral", "vine", "laurel", "tulip", "wave")
+SCROLL_STYLES = (
+    "classic",
+    "double-spiral",
+    "vine",
+    "laurel",
+    "tulip",
+    "wave",
+    "baroque-curl",
+    "fiddlehead",
+    "arabesque",
+    "ribbon-curl",
+    "tendril-cascade",
+    "lightning",
+    "chevron",
+    "diamond-chain",
+    "circuit",
+    "sunburst",
+)
 FALLBACK_FONTS = [
     DEFAULT_FONT,
     "/Library/Fonts/Arial Unicode.ttf",
@@ -548,6 +565,262 @@ def draw_wave_scroll(
     draw_polyline(mask, x_centers, y_centers, tail, stroke * 0.68)
 
 
+def draw_baroque_curl_scroll(
+    mask: np.ndarray,
+    x_centers: np.ndarray,
+    y_centers: np.ndarray,
+    cx: float,
+    cy: float,
+    width: float,
+    height: float,
+    mirror: bool,
+    stroke: float,
+) -> None:
+    main = []
+    for index in range(128):
+        t = index / 127.0
+        angle = 2.75 * 2.0 * math.pi * t
+        radius = (1.0 - t) * 0.34
+        main.append(ornament_point(cx, cy, width, height, -0.34 + 0.76 * t + radius * math.cos(angle), radius * math.sin(angle) * 0.88, mirror))
+    draw_polyline(mask, x_centers, y_centers, main, stroke)
+    for ox, oy, turns in [(-0.18, 0.16, 1.2), (0.20, -0.10, -1.1)]:
+        curl = []
+        for index in range(58):
+            t = index / 57.0
+            angle = turns * 2.0 * math.pi * t
+            radius = (1.0 - t) * 0.16
+            curl.append(ornament_point(cx, cy, width, height, ox + radius * math.cos(angle), oy + radius * math.sin(angle), mirror))
+        draw_polyline(mask, x_centers, y_centers, curl, stroke * 0.7)
+
+
+def draw_fiddlehead_scroll(
+    mask: np.ndarray,
+    x_centers: np.ndarray,
+    y_centers: np.ndarray,
+    cx: float,
+    cy: float,
+    width: float,
+    height: float,
+    mirror: bool,
+    stroke: float,
+) -> None:
+    stem = [
+        ornament_point(cx, cy, width, height, -0.44 + 0.62 * t, -0.18 + 0.12 * math.sin(math.pi * t), mirror)
+        for t in np.linspace(0.0, 1.0, 60)
+    ]
+    head = []
+    for index in range(110):
+        t = index / 109.0
+        angle = 2.45 * 2.0 * math.pi * t
+        radius = (1.0 - t) * 0.23
+        head.append(ornament_point(cx, cy, width, height, 0.18 + radius * math.cos(angle), 0.08 + radius * math.sin(angle), mirror))
+    draw_polyline(mask, x_centers, y_centers, stem, stroke * 0.9)
+    draw_polyline(mask, x_centers, y_centers, head, stroke)
+    for px, py in [(-0.28, -0.06), (-0.12, 0.04), (0.02, -0.02)]:
+        draw_leaf(mask, x_centers, y_centers, cx, cy, width, height, px, py, 0.05, mirror, stroke * 0.65)
+
+
+def draw_arabesque_scroll(
+    mask: np.ndarray,
+    x_centers: np.ndarray,
+    y_centers: np.ndarray,
+    cx: float,
+    cy: float,
+    width: float,
+    height: float,
+    mirror: bool,
+    stroke: float,
+) -> None:
+    spine = [
+        ornament_point(cx, cy, width, height, (t - 0.5) * 0.78, 0.08 * math.sin(2.0 * math.pi * t), mirror)
+        for t in np.linspace(0.0, 1.0, 86)
+    ]
+    draw_polyline(mask, x_centers, y_centers, spine, stroke * 0.85)
+    for ox, oy, direction in [(-0.26, 0.08, 1.0), (0.0, -0.10, -1.0), (0.26, 0.08, 1.0)]:
+        curl = []
+        for index in range(72):
+            t = index / 71.0
+            angle = direction * 1.55 * 2.0 * math.pi * t
+            radius = (1.0 - t) * 0.16
+            curl.append(ornament_point(cx, cy, width, height, ox + radius * math.cos(angle), oy + radius * math.sin(angle), mirror))
+        draw_polyline(mask, x_centers, y_centers, curl, stroke * 0.78)
+
+
+def draw_ribbon_curl_scroll(
+    mask: np.ndarray,
+    x_centers: np.ndarray,
+    y_centers: np.ndarray,
+    cx: float,
+    cy: float,
+    width: float,
+    height: float,
+    mirror: bool,
+    stroke: float,
+) -> None:
+    ribbon = [
+        ornament_point(cx, cy, width, height, (t - 0.5) * 0.84, 0.18 * math.sin(1.6 * math.pi * t), mirror)
+        for t in np.linspace(0.0, 1.0, 96)
+    ]
+    draw_polyline(mask, x_centers, y_centers, ribbon, stroke * 1.12)
+    for ox, direction in [(-0.34, -1.0), (0.34, 1.0)]:
+        curl = []
+        for index in range(66):
+            t = index / 65.0
+            angle = direction * 1.65 * 2.0 * math.pi * t
+            radius = (1.0 - t) * 0.15
+            curl.append(ornament_point(cx, cy, width, height, ox + radius * math.cos(angle), radius * math.sin(angle), mirror))
+        draw_polyline(mask, x_centers, y_centers, curl, stroke * 0.74)
+    highlight = [
+        ornament_point(cx, cy, width, height, (t - 0.5) * 0.70, 0.09 + 0.10 * math.sin(1.6 * math.pi * t), mirror)
+        for t in np.linspace(0.0, 1.0, 72)
+    ]
+    draw_polyline(mask, x_centers, y_centers, highlight, stroke * 0.48)
+
+
+def draw_tendril_cascade_scroll(
+    mask: np.ndarray,
+    x_centers: np.ndarray,
+    y_centers: np.ndarray,
+    cx: float,
+    cy: float,
+    width: float,
+    height: float,
+    mirror: bool,
+    stroke: float,
+) -> None:
+    anchor = ornament_point(cx, cy, width, height, -0.38, 0.20, mirror)
+    draw_disk(mask, x_centers, y_centers, *anchor, stroke * 0.75)
+    for offset, drop, turns in [(0.0, -0.02, 1.6), (0.16, -0.10, 1.9), (0.31, -0.17, 1.35)]:
+        tendril = []
+        for index in range(82):
+            t = index / 81.0
+            angle = turns * 2.0 * math.pi * t
+            radius = (1.0 - t) * 0.14
+            tendril.append(ornament_point(cx, cy, width, height, -0.36 + offset + 0.34 * t + radius * math.cos(angle), 0.20 + drop - 0.23 * t + radius * math.sin(angle), mirror))
+        draw_polyline(mask, x_centers, y_centers, tendril, stroke * 0.72)
+    base = [
+        ornament_point(cx, cy, width, height, -0.42 + 0.82 * t, -0.18 + 0.06 * math.sin(2.0 * math.pi * t), mirror)
+        for t in np.linspace(0.0, 1.0, 70)
+    ]
+    draw_polyline(mask, x_centers, y_centers, base, stroke * 0.65)
+
+
+def draw_lightning_scroll(
+    mask: np.ndarray,
+    x_centers: np.ndarray,
+    y_centers: np.ndarray,
+    cx: float,
+    cy: float,
+    width: float,
+    height: float,
+    mirror: bool,
+    stroke: float,
+) -> None:
+    bolt = [
+        (-0.42, 0.26),
+        (-0.10, 0.26),
+        (-0.24, 0.02),
+        (0.02, 0.02),
+        (-0.16, -0.32),
+        (0.36, 0.08),
+        (0.10, 0.08),
+        (0.24, 0.26),
+    ]
+    draw_polyline(mask, x_centers, y_centers, [ornament_point(cx, cy, width, height, px, py, mirror) for px, py in bolt], stroke * 1.05)
+    echo = [(-0.34, -0.20), (-0.08, -0.06), (0.18, -0.20), (0.40, -0.08)]
+    draw_polyline(mask, x_centers, y_centers, [ornament_point(cx, cy, width, height, px, py, mirror) for px, py in echo], stroke * 0.62)
+
+
+def draw_chevron_scroll(
+    mask: np.ndarray,
+    x_centers: np.ndarray,
+    y_centers: np.ndarray,
+    cx: float,
+    cy: float,
+    width: float,
+    height: float,
+    mirror: bool,
+    stroke: float,
+) -> None:
+    for offset, scale in [(-0.26, 1.0), (0.0, 0.88), (0.24, 0.74)]:
+        chevron = [
+            (offset - 0.16 * scale, -0.22 * scale),
+            (offset, 0.22 * scale),
+            (offset + 0.16 * scale, -0.22 * scale),
+        ]
+        draw_polyline(mask, x_centers, y_centers, [ornament_point(cx, cy, width, height, px, py, mirror) for px, py in chevron], stroke * 0.92)
+    rail = [(-0.46, -0.28), (0.44, -0.28)]
+    draw_polyline(mask, x_centers, y_centers, [ornament_point(cx, cy, width, height, px, py, mirror) for px, py in rail], stroke * 0.58)
+
+
+def draw_diamond_chain_scroll(
+    mask: np.ndarray,
+    x_centers: np.ndarray,
+    y_centers: np.ndarray,
+    cx: float,
+    cy: float,
+    width: float,
+    height: float,
+    mirror: bool,
+    stroke: float,
+) -> None:
+    for offset, scale in [(-0.28, 1.0), (0.0, 0.82), (0.26, 0.68)]:
+        diamond = [
+            (offset, 0.24 * scale),
+            (offset + 0.13 * scale, 0.0),
+            (offset, -0.24 * scale),
+            (offset - 0.13 * scale, 0.0),
+            (offset, 0.24 * scale),
+        ]
+        draw_polyline(mask, x_centers, y_centers, [ornament_point(cx, cy, width, height, px, py, mirror) for px, py in diamond], stroke * 0.82)
+    connector = [(-0.42, 0.0), (0.40, 0.0)]
+    draw_polyline(mask, x_centers, y_centers, [ornament_point(cx, cy, width, height, px, py, mirror) for px, py in connector], stroke * 0.52)
+
+
+def draw_circuit_scroll(
+    mask: np.ndarray,
+    x_centers: np.ndarray,
+    y_centers: np.ndarray,
+    cx: float,
+    cy: float,
+    width: float,
+    height: float,
+    mirror: bool,
+    stroke: float,
+) -> None:
+    traces = [
+        [(-0.44, 0.18), (-0.18, 0.18), (-0.18, -0.10), (0.02, -0.10), (0.02, 0.16), (0.34, 0.16)],
+        [(-0.36, -0.24), (-0.08, -0.24), (-0.08, 0.02), (0.22, 0.02), (0.22, -0.20), (0.42, -0.20)],
+    ]
+    for trace in traces:
+        draw_polyline(mask, x_centers, y_centers, [ornament_point(cx, cy, width, height, px, py, mirror) for px, py in trace], stroke * 0.68)
+    for px, py in [(-0.44, 0.18), (0.34, 0.16), (-0.36, -0.24), (0.42, -0.20), (0.02, -0.10)]:
+        draw_disk(mask, x_centers, y_centers, *ornament_point(cx, cy, width, height, px, py, mirror), stroke * 0.72)
+
+
+def draw_sunburst_scroll(
+    mask: np.ndarray,
+    x_centers: np.ndarray,
+    y_centers: np.ndarray,
+    cx: float,
+    cy: float,
+    width: float,
+    height: float,
+    mirror: bool,
+    stroke: float,
+) -> None:
+    center = ornament_point(cx, cy, width, height, -0.12, -0.02, mirror)
+    draw_disk(mask, x_centers, y_centers, *center, stroke * 0.78)
+    for angle in np.linspace(-0.18 * math.pi, 1.18 * math.pi, 9):
+        x0 = -0.12 + 0.10 * math.cos(angle)
+        y0 = -0.02 + 0.10 * math.sin(angle)
+        x1 = -0.12 + 0.38 * math.cos(angle)
+        y1 = -0.02 + 0.38 * math.sin(angle)
+        draw_polyline(mask, x_centers, y_centers, [ornament_point(cx, cy, width, height, x0, y0, mirror), ornament_point(cx, cy, width, height, x1, y1, mirror)], stroke * 0.55)
+    baseline = [(-0.46, -0.28), (0.42, -0.28)]
+    draw_polyline(mask, x_centers, y_centers, [ornament_point(cx, cy, width, height, px, py, mirror) for px, py in baseline], stroke * 0.55)
+
+
 def make_top_scroll_mask(
     x_centers: np.ndarray,
     y_centers: np.ndarray,
@@ -571,6 +844,16 @@ def make_top_scroll_mask(
         "laurel": draw_laurel_scroll,
         "tulip": draw_tulip_scroll,
         "wave": draw_wave_scroll,
+        "baroque-curl": draw_baroque_curl_scroll,
+        "fiddlehead": draw_fiddlehead_scroll,
+        "arabesque": draw_arabesque_scroll,
+        "ribbon-curl": draw_ribbon_curl_scroll,
+        "tendril-cascade": draw_tendril_cascade_scroll,
+        "lightning": draw_lightning_scroll,
+        "chevron": draw_chevron_scroll,
+        "diamond-chain": draw_diamond_chain_scroll,
+        "circuit": draw_circuit_scroll,
+        "sunburst": draw_sunburst_scroll,
     }
     drawer = drawers[style]
     for center_x, mirror in ((left_center_x, False), (right_center_x, True)):
@@ -975,7 +1258,7 @@ def build_meshes(args: argparse.Namespace) -> tuple[Mesh, Mesh | None, Mesh, dic
 
 def parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(description="Generate aligned STL files for a plant sign.")
-    p.add_argument("--text", default=None, help="Text to put on the sign. Use '-' to read stdin.")
+    p.add_argument("--text", "-text", default=None, help="Text to put on the sign. Use '-' to read stdin.")
     p.add_argument("--no-text", action="store_true", help="Generate plate_base.stl and holder.stl with no text recess or plate_text.stl.")
     p.add_argument("--outdir", default="outputs", help="Directory for plate_base.stl, plate_text.stl, and holder.stl.")
     p.add_argument("--font", default=DEFAULT_FONT, help="Path to a TTF/OTF font with Cyrillic support.")

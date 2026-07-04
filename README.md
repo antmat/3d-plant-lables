@@ -47,7 +47,20 @@ python3 outputs/plant_sign_generator.py --text "яблоня" --top-scrolls \
   --outdir outputs
 ```
 
-Available styles: `classic`, `double-spiral`, `vine`, `laurel`, `tulip`, `wave`.
+Available styles, in preview order:
+`classic`, `double-spiral`, `vine`, `laurel`, `tulip`, `wave`,
+`baroque-curl`, `fiddlehead`, `arabesque`, `ribbon-curl`,
+`tendril-cascade`, `lightning`, `chevron`, `diamond-chain`, `circuit`,
+`sunburst`.
+
+Render numbered previews for all styles:
+
+```bash
+python3 work/plant_sign_generator/render_scroll_previews.py -text $'Лобо\n\n2023' \
+  --line-size 28 \
+  --line-size 12 \
+  --outdir outputs/scroll_previews
+```
 
 Generate multiline text from stdin:
 

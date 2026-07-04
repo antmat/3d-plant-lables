@@ -53,7 +53,22 @@ python3 outputs/plant_sign_generator.py --text "яблоня" --top-scrolls \
   --outdir outputs
 ```
 
-Доступные стили: `classic`, `double-spiral`, `vine`, `laurel`, `tulip`, `wave`.
+Доступные стили в порядке нумерации превью:
+`classic`, `double-spiral`, `vine`, `laurel`, `tulip`, `wave`,
+`baroque-curl`, `fiddlehead`, `arabesque`, `ribbon-curl`,
+`tendril-cascade`, `lightning`, `chevron`, `diamond-chain`, `circuit`,
+`sunburst`.
+
+Превью всех стилей лежат в `outputs/scroll_previews/`: отдельные файлы
+`01.png` ... `16.png` и общий лист `all_scroll_styles.png`. На самих превью
+только номера, без названий. Пересоздать их можно так:
+
+```bash
+python3 work/plant_sign_generator/render_scroll_previews.py -text $'Лобо\n\n2023' \
+  --line-size 28 \
+  --line-size 12 \
+  --outdir outputs/scroll_previews
+```
 
 Многострочный текст можно передать через stdin, не указывая `--text`:
 
