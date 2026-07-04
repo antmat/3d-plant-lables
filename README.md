@@ -5,8 +5,9 @@ Parametric generator and ready-to-print files for a two-color plant sign.
 Default model:
 
 - Plate: 180 x 90 x 4 mm.
-- Rear blind holder for 8 mm composite rebar.
-- Holder channel: 8.6 mm.
+- Rear blind holder for 12 mm composite rebar.
+- Holder channel: 12.6 mm.
+- Holder outer diameter: 24 mm.
 - Text: `яблоня`, exported as a separate aligned STL for AMS / dual-nozzle printing.
 - Print orientation: face down, so printing starts from the flat sign face and text.
 

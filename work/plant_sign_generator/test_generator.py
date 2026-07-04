@@ -142,6 +142,18 @@ def test_multiline_text_accepts_per_line_fonts() -> None:
     assert georgia in meta["font_paths"]
 
 
+def test_default_holder_fits_12mm_rebar() -> None:
+    args = gen.parser().parse_args(["--text", "яблоня", "--outdir", "outputs"])
+    base, _, meta = gen.build_meshes(args)
+    base_min, base_max = bbox(base)
+
+    assert args.rod_diameter == 12.0
+    assert args.rod_clearance == 0.6
+    assert args.holder_outer_diameter == 24.0
+    assert abs(float(meta["channel_diameter"]) - 12.6) < 0.001
+    assert abs((base_max[2] - base_min[2]) - 26.0) < 0.001
+
+
 def main() -> int:
     tests = [
         test_image_mask_top_row_maps_to_model_top_row,
@@ -153,6 +165,7 @@ def main() -> int:
         test_resolve_text_uses_default_when_text_omitted_and_stdin_empty,
         test_multiline_text_with_line_sizes_generates_two_line_mask,
         test_multiline_text_accepts_per_line_fonts,
+        test_default_holder_fits_12mm_rebar,
     ]
     failed = 0
     for test in tests:

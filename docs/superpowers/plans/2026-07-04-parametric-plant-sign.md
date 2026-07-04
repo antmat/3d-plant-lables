@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Build a Python generator that creates aligned STL files for a 180 x 90 x 4 mm plant label with a colored inlaid Cyrillic text body and a rear blind holder for 8 mm composite rebar.
+**Goal:** Build a Python generator that creates aligned STL files for a 180 x 90 x 4 mm plant label with a colored inlaid Cyrillic text body and a rear blind holder for 12 mm composite rebar.
 
 **Architecture:** The generator creates simple triangle meshes directly: rounded plate primitives, a raster-derived text insert, a matching text recess in the plate, and rear holder solids. A small verifier reads binary STL headers and bounding boxes so the generated output can be checked without external CAD software.
 
@@ -15,8 +15,8 @@
 - Base plate: 180 mm width, 90 mm height, 4 mm thickness.
 - Default text: `яблоня`.
 - Text pocket depth: about 0.8 mm.
-- Rear holder: centered, vertical, external cylinder about 16 mm diameter, about 65 mm long.
-- Holder channel: circular, blind at the top, open at the bottom, nominal 8.6 mm diameter for 8 mm composite rebar.
+- Rear holder: centered, vertical, external cylinder about 24 mm diameter, about 65 mm long.
+- Holder channel: circular, blind at the top, open at the bottom, nominal 12.6 mm diameter for 12 mm composite rebar.
 - Current workspace is not a git repository, so verification replaces commit steps.
 
 ---
@@ -51,7 +51,7 @@ Implement `generate_plant_sign.py` with:
 - Raster text mask using `/Library/Fonts/YS Text-Heavy.ttf`.
 - Text insert mesh from the mask.
 - Base mesh with a text-shaped recessed pocket from the same mask.
-- Rear blind cylindrical holder with an 8.6 mm internal channel.
+- Rear blind cylindrical holder with a 12.6 mm internal channel.
 - Two side blend ribs from holder to plate.
 
 - [ ] **Step 3: Run the smoke test**
@@ -121,4 +121,3 @@ ls -lh outputs/plate_base.stl outputs/plate_text.stl outputs/plant_sign_generato
 ```
 
 Expected: all four user-facing output files exist and are non-empty.
-

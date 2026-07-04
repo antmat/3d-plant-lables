@@ -49,8 +49,8 @@ Rear holder:
 - Shape: external cylinder fused to the rear of the plate.
 - Top: closed/blind.
 - Bottom: open.
-- Internal channel: circular, nominal 8.6 mm diameter for 8 mm composite rebar.
-- External holder diameter: about 16 mm.
+- Internal channel: circular, nominal 12.6 mm diameter for 12 mm composite rebar.
+- External holder diameter: about 24 mm.
 - Holder length along the label height: about 65 mm.
 - Smooth side transitions/fillets should blend the holder into the plate for
   strength and appearance.
