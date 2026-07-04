@@ -387,69 +387,6 @@ def add_box_cell(mesh: Mesh, x_edges: np.ndarray, y_edges: np.ndarray, i: int, j
             mesh.quad(a, b, c, d)
 
 
-def add_heightfield_plate(
-    mesh: Mesh,
-    occupied: np.ndarray,
-    pocket: np.ndarray,
-    x_edges: np.ndarray,
-    y_edges: np.ndarray,
-    plate_thickness: float,
-    text_depth: float,
-) -> None:
-    ny, nx = occupied.shape
-    high = plate_thickness
-    low = plate_thickness - text_depth
-
-    for j in range(ny):
-        for i in range(nx):
-            if not occupied[j, i]:
-                continue
-            z = low if pocket[j, i] else high
-            p00, p10, p11, p01 = cell_corners(x_edges, y_edges, i, j, z)
-            b00, b10, b11, b01 = cell_corners(x_edges, y_edges, i, j, 0.0)
-            mesh.quad(p00, p10, p11, p01)
-            mesh.quad(b00, b01, b11, b10)
-
-            sides = [
-                (i, j - 1, b00, b10, p10, p00, "south"),
-                (i + 1, j, b10, b11, p11, p10, "east"),
-                (i, j + 1, b11, b01, p01, p11, "north"),
-                (i - 1, j, b01, b00, p00, p01, "west"),
-            ]
-            for ni, nj, a0, b0, b1, a1, edge in sides:
-                if ni < 0 or nj < 0 or ni >= nx or nj >= ny or not occupied[nj, ni]:
-                    mesh.quad(a0, b0, b1, a1)
-                    continue
-
-                if edge not in ("east", "north"):
-                    continue
-                neighbor_z = low if pocket[nj, ni] else high
-                if abs(neighbor_z - z) < 1e-9:
-                    continue
-                z_min, z_max = sorted((z, neighbor_z))
-                if edge == "south":
-                    a = (float(x_edges[i]), float(y_edges[j]), z_min)
-                    b = (float(x_edges[i + 1]), float(y_edges[j]), z_min)
-                    c = (float(x_edges[i + 1]), float(y_edges[j]), z_max)
-                    d = (float(x_edges[i]), float(y_edges[j]), z_max)
-                elif edge == "east":
-                    a = (float(x_edges[i + 1]), float(y_edges[j]), z_min)
-                    b = (float(x_edges[i + 1]), float(y_edges[j + 1]), z_min)
-                    c = (float(x_edges[i + 1]), float(y_edges[j + 1]), z_max)
-                    d = (float(x_edges[i + 1]), float(y_edges[j]), z_max)
-                elif edge == "north":
-                    a = (float(x_edges[i + 1]), float(y_edges[j + 1]), z_min)
-                    b = (float(x_edges[i]), float(y_edges[j + 1]), z_min)
-                    c = (float(x_edges[i]), float(y_edges[j + 1]), z_max)
-                    d = (float(x_edges[i + 1]), float(y_edges[j + 1]), z_max)
-                else:
-                    a = (float(x_edges[i]), float(y_edges[j + 1]), z_min)
-                    b = (float(x_edges[i]), float(y_edges[j]), z_min)
-                    c = (float(x_edges[i]), float(y_edges[j]), z_max)
-                    d = (float(x_edges[i]), float(y_edges[j + 1]), z_max)
-                mesh.quad(a, b, c, d)
-
-
 def add_mask_solid(
     mesh: Mesh,
     mask: np.ndarray,
@@ -466,121 +403,153 @@ def add_mask_solid(
             add_box_cell(mesh, x_edges, y_edges, i, j, z0, z1, mask)
 
 
-def ring_points_y(radius_x: float, radius_z: float, center_x: float, center_z: float, y: float, segments: int) -> list[Vec3]:
-    return [
-        (
-            center_x + radius_x * math.cos(2.0 * math.pi * k / segments),
-            y,
-            center_z + radius_z * math.sin(2.0 * math.pi * k / segments),
-        )
-        for k in range(segments)
-    ]
+def axis_edges(start: float, stop: float, resolution: float, specials: Iterable[float] = ()) -> np.ndarray:
+    count = max(1, int(math.ceil((stop - start) / resolution)))
+    values = [start + resolution * index for index in range(count + 1)]
+    values[-1] = stop
+    values.extend(value for value in specials if start - 1e-9 <= value <= stop + 1e-9)
+    rounded: dict[float, float] = {}
+    for value in values:
+        rounded[round(value, 6)] = min(max(value, start), stop)
+    return np.array([rounded[key] for key in sorted(rounded)], dtype=float)
 
 
-def blended_holder_outer_points_y(
-    radius: float,
-    inner_radius: float,
-    center_z: float,
-    plate_overlap: float,
-    y: float,
-    segments: int,
-) -> list[Vec3]:
-    min_wall = 0.6
-    top_z = min(center_z + radius, max(plate_overlap, center_z + inner_radius + min_wall))
-    top_offset = top_z - center_z
-    points = []
-    for k in range(segments):
-        angle = 2.0 * math.pi * k / segments
-        dx = math.cos(angle)
-        dz = math.sin(angle)
-        candidates = []
-        if dz < -1e-9:
-            candidates.append(radius)
-        if dz > 1e-9:
-            t = top_offset / dz
-            x = t * dx
-            if t > 0.0 and abs(x) <= radius + 1e-9:
-                candidates.append(t)
-        if abs(dx) > 1e-9:
-            t = (radius if dx > 0.0 else -radius) / dx
-            z = center_z + t * dz
-            if t > 0.0 and center_z - 1e-9 <= z <= top_z + 1e-9:
-                candidates.append(t)
-        distance = min(candidates) if candidates else radius
-        points.append((distance * dx, y, center_z + distance * dz))
-    return points
-
-
-def add_blended_blind_tube_y(
+def add_voxel_solid(
     mesh: Mesh,
-    outer_radius: float,
-    inner_radius: float,
-    center_z: float,
-    y_min: float,
-    y_max: float,
-    cap_thickness: float,
-    plate_overlap: float,
-    transition_end_margin: float,
-    segments: int,
-) -> int:
-    start_count = len(mesh.triangles)
-    length = y_max - y_min
-    margin = min(max(transition_end_margin, 0.0), max(length / 2.0 - 0.001, 0.0))
+    solid: np.ndarray,
+    x_edges: np.ndarray,
+    y_edges: np.ndarray,
+    z_edges: np.ndarray,
+) -> None:
+    nz, ny, nx = solid.shape
 
-    stations: list[tuple[float, bool]] = []
-    if margin > 0.0:
-        stations = [
-            (y_min, False),
-            (y_min + margin, True),
-            (y_max - margin, True),
-            (y_max, False),
-        ]
-    else:
-        stations = [(y_min, True), (y_max, True)]
+    def add_face(k: int, j: int, i: int, direction: str) -> None:
+        x0, x1 = float(x_edges[i]), float(x_edges[i + 1])
+        y0, y1 = float(y_edges[j]), float(y_edges[j + 1])
+        z0, z1 = float(z_edges[k]), float(z_edges[k + 1])
+        if direction == "x-":
+            mesh.quad((x0, y0, z0), (x0, y0, z1), (x0, y1, z1), (x0, y1, z0))
+        elif direction == "x+":
+            mesh.quad((x1, y0, z0), (x1, y1, z0), (x1, y1, z1), (x1, y0, z1))
+        elif direction == "y-":
+            mesh.quad((x0, y0, z0), (x1, y0, z0), (x1, y0, z1), (x0, y0, z1))
+        elif direction == "y+":
+            mesh.quad((x0, y1, z0), (x0, y1, z1), (x1, y1, z1), (x1, y1, z0))
+        elif direction == "z-":
+            mesh.quad((x0, y0, z0), (x0, y1, z0), (x1, y1, z0), (x1, y0, z0))
+        elif direction == "z+":
+            mesh.quad((x0, y0, z1), (x1, y0, z1), (x1, y1, z1), (x0, y1, z1))
 
-    clean_stations: list[tuple[float, bool]] = []
-    for station in stations:
-        if clean_stations and abs(station[0] - clean_stations[-1][0]) < 1e-9:
-            clean_stations[-1] = station
-        else:
-            clean_stations.append(station)
+    masks = []
+    face = solid.copy()
+    face[:, :, 1:] &= ~solid[:, :, :-1]
+    masks.append(("x-", face))
+    face = solid.copy()
+    face[:, :, :-1] &= ~solid[:, :, 1:]
+    masks.append(("x+", face))
+    face = solid.copy()
+    face[:, 1:, :] &= ~solid[:, :-1, :]
+    masks.append(("y-", face))
+    face = solid.copy()
+    face[:, :-1, :] &= ~solid[:, 1:, :]
+    masks.append(("y+", face))
+    face = solid.copy()
+    face[1:, :, :] &= ~solid[:-1, :, :]
+    masks.append(("z-", face))
+    face = solid.copy()
+    face[:-1, :, :] &= ~solid[1:, :, :]
+    masks.append(("z+", face))
 
-    outer_rings = []
-    for y, blended in clean_stations:
-        if blended:
-            outer_rings.append(
-                blended_holder_outer_points_y(outer_radius, inner_radius, center_z, plate_overlap, y, segments)
-            )
-        else:
-            outer_rings.append(ring_points_y(outer_radius, outer_radius, 0.0, center_z, y, segments))
+    for direction, mask in masks:
+        for k, j, i in zip(*np.nonzero(mask)):
+            add_face(int(k), int(j), int(i), direction)
 
-    inner_bottom = ring_points_y(inner_radius, inner_radius, 0.0, center_z, y_min, segments)
-    inner_top_y = y_max - cap_thickness
-    inner_top = ring_points_y(inner_radius, inner_radius, 0.0, center_z, inner_top_y, segments)
-    outer_bottom = outer_rings[0]
-    outer_top = outer_rings[-1]
-    c_outer_top = (0.0, y_max, center_z)
-    c_inner_top = (0.0, inner_top_y, center_z)
 
-    for lower, upper in zip(outer_rings, outer_rings[1:]):
-        for k in range(segments):
-            n = (k + 1) % segments
-            mesh.quad(lower[k], lower[n], upper[n], upper[k])
+def add_voxel_base(
+    mesh: Mesh,
+    occupied: np.ndarray,
+    pocket: np.ndarray,
+    x_edges: np.ndarray,
+    y_edges: np.ndarray,
+    z_edges: np.ndarray,
+    plate_thickness: float,
+    text_depth: float,
+    holder_outer: float,
+    holder_inner: float,
+    holder_center_z: float,
+    holder_y_min: float,
+    holder_y_max: float,
+    holder_cap_thickness: float,
+) -> dict[str, int]:
+    x_centers = (x_edges[:-1] + x_edges[1:]) / 2.0
+    y_centers = (y_edges[:-1] + y_edges[1:]) / 2.0
+    z_centers = (z_edges[:-1] + z_edges[1:]) / 2.0
 
-    for k in range(segments):
-        n = (k + 1) % segments
-        mesh.tri(c_outer_top, outer_top[k], outer_top[n])
-        mesh.quad(outer_bottom[n], outer_bottom[k], inner_bottom[k], inner_bottom[n])
-        mesh.quad(inner_bottom[k], inner_top[k], inner_top[n], inner_bottom[n])
-        mesh.tri(c_inner_top, inner_top[n], inner_top[k])
-    return len(mesh.triangles) - start_count
+    top_z = np.where(pocket, plate_thickness - text_depth, plate_thickness)
+    plate = (
+        occupied[np.newaxis, :, :]
+        & (z_centers[:, np.newaxis, np.newaxis] >= 0.0)
+        & (z_centers[:, np.newaxis, np.newaxis] < top_z[np.newaxis, :, :])
+    )
+
+    xx = x_centers[np.newaxis, :]
+    zz = z_centers[:, np.newaxis]
+    outer_bottom = holder_center_z - np.sqrt(np.maximum(holder_outer * holder_outer - xx * xx, 0.0))
+    outer_profile = (np.abs(xx) <= holder_outer) & (zz >= outer_bottom) & (zz < 0.0)
+    holder_y = (y_centers >= holder_y_min) & (y_centers < holder_y_max)
+    holder = outer_profile[:, np.newaxis, :] & holder_y[np.newaxis, :, np.newaxis]
+
+    inner_profile = xx * xx + (zz - holder_center_z) * (zz - holder_center_z) <= holder_inner * holder_inner
+    inner_top_y = holder_y_max - holder_cap_thickness
+    channel_y = (y_centers >= holder_y_min) & (y_centers < inner_top_y)
+    channel = inner_profile[:, np.newaxis, :] & channel_y[np.newaxis, :, np.newaxis]
+    holder &= ~channel
+
+    solid = plate | holder
+    add_voxel_solid(mesh, solid, x_edges, y_edges, z_edges)
+    return {
+        "solid_cells": int(solid.sum()),
+        "holder_cells": int(holder.sum()),
+        "channel_cells": int(channel.sum()),
+    }
 
 
 def build_meshes(args: argparse.Namespace) -> tuple[Mesh, Mesh | None, dict[str, object]]:
-    nx = int(round(args.plate_width / args.resolution))
-    ny = int(round(args.plate_height / args.resolution))
-    x_edges = np.linspace(-args.plate_width / 2.0, args.plate_width / 2.0, nx + 1)
-    y_edges = np.linspace(-args.plate_height / 2.0, args.plate_height / 2.0, ny + 1)
+    holder_outer = args.holder_outer_diameter / 2.0
+    holder_inner = args.rod_diameter / 2.0 + args.rod_clearance / 2.0
+    holder_center_z = -holder_outer + args.holder_embed
+    y_min = -args.holder_length / 2.0
+    y_max = args.holder_length / 2.0
+    inner_top_y = y_max - args.holder_cap_thickness
+    z_min = min(0.0, holder_center_z - holder_outer)
+    z_max = args.plate_thickness
+    x_edges = axis_edges(
+        -args.plate_width / 2.0,
+        args.plate_width / 2.0,
+        args.resolution,
+        [-holder_outer, holder_outer],
+    )
+    y_edges = axis_edges(
+        -args.plate_height / 2.0,
+        args.plate_height / 2.0,
+        args.resolution,
+        [y_min, inner_top_y, y_max],
+    )
+    z_edges = axis_edges(
+        z_min,
+        z_max,
+        args.resolution,
+        [
+            0.0,
+            args.plate_thickness - args.text_depth,
+            args.plate_thickness,
+            holder_center_z - holder_outer,
+            holder_center_z - holder_inner,
+            holder_center_z + holder_inner,
+        ],
+    )
+    nx = len(x_edges) - 1
+    ny = len(y_edges) - 1
     x_centers = (x_edges[:-1] + x_edges[1:]) / 2.0
     y_centers = (y_edges[:-1] + y_edges[1:]) / 2.0
 
@@ -615,26 +584,22 @@ def build_meshes(args: argparse.Namespace) -> tuple[Mesh, Mesh | None, dict[str,
         pocket_mask = text_mask
 
     base = Mesh("plant_sign_base")
-    add_heightfield_plate(base, occupied, pocket_mask, x_edges, y_edges, args.plate_thickness, args.text_depth)
-
-    holder_outer = args.holder_outer_diameter / 2.0
-    holder_inner = args.rod_diameter / 2.0 + args.rod_clearance / 2.0
-    holder_center_z = -holder_outer + args.holder_embed
-    y_min = -args.holder_length / 2.0
-    y_max = args.holder_length / 2.0
-    transition_triangles = add_blended_blind_tube_y(
+    solid_stats = add_voxel_base(
         base,
+        occupied,
+        pocket_mask,
+        x_edges,
+        y_edges,
+        z_edges,
+        args.plate_thickness,
+        args.text_depth,
         holder_outer,
         holder_inner,
         holder_center_z,
         y_min,
         y_max,
         args.holder_cap_thickness,
-        args.transition_plate_overlap,
-        args.transition_end_margin,
-        args.holder_segments,
     )
-
     transition_margin = min(
         max(args.transition_end_margin, 0.0),
         max(args.holder_length / 2.0 - 0.001, 0.0),
@@ -668,11 +633,13 @@ def build_meshes(args: argparse.Namespace) -> tuple[Mesh, Mesh | None, dict[str,
         "text_triangles": 0 if text is None else len(text.triangles),
         "channel_diameter": holder_inner * 2.0,
         "orientation": args.orientation,
-        "transition_triangles": transition_triangles,
         "transition_length": transition_y_max - transition_y_min,
         "line_count": text_layout.line_count,
         "font_paths": ", ".join(text_layout.font_paths),
         "font_pixel_sizes": ", ".join(str(size) for size in text_layout.font_pixel_sizes),
+        "solid_cells": solid_stats["solid_cells"],
+        "holder_cells": solid_stats["holder_cells"],
+        "channel_cells": solid_stats["channel_cells"],
     }
     return base, text, meta
 
@@ -704,10 +671,10 @@ def parser() -> argparse.ArgumentParser:
     p.add_argument("--holder-length", type=float, default=65.0)
     p.add_argument("--holder-cap-thickness", type=float, default=4.0)
     p.add_argument("--holder-embed", type=float, default=2.0)
-    p.add_argument("--holder-segments", type=int, default=96)
-    p.add_argument("--transition-plate-overlap", type=float, default=0.8)
+    p.add_argument("--holder-segments", type=int, default=96, help=argparse.SUPPRESS)
+    p.add_argument("--transition-plate-overlap", type=float, default=0.8, help=argparse.SUPPRESS)
     p.add_argument("--transition-cylinder-overlap", type=float, default=0.4, help=argparse.SUPPRESS)
-    p.add_argument("--transition-end-margin", type=float, default=0.0)
+    p.add_argument("--transition-end-margin", type=float, default=0.0, help=argparse.SUPPRESS)
     p.add_argument("--transition-segments", type=int, default=28, help=argparse.SUPPRESS)
     p.add_argument("--orientation", choices=["face-down", "front-up"], default="face-down")
     return p

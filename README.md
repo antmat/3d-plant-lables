@@ -8,7 +8,7 @@ Default model:
 - Rear blind holder for 12 mm composite rebar.
 - Holder channel: 12.6 mm.
 - Holder outer diameter: 20 mm.
-- Holder transition: integrated filled blend along the full holder length, generated as one shell with the holder.
+- Base topology: plate, holder, and filled transition are generated as one shell.
 - Text: `яблоня`, exported as a separate aligned STL for AMS / dual-nozzle printing.
 - Print orientation: face down, so printing starts from the flat sign face and text.
 

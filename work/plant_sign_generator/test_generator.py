@@ -197,17 +197,17 @@ def test_default_holder_uses_filled_transition() -> None:
         & (points[:, 2] > -0.2)
     ]
 
-    assert int(meta["transition_triangles"]) > 0
+    assert int(meta["holder_cells"]) > 0
     assert args.transition_end_margin == 0.0
     assert abs(float(meta["transition_length"]) - args.holder_length) < 0.001
     assert len(transition_points) > 0
 
 
-def test_holder_transition_is_part_of_holder_shell() -> None:
+def test_base_plate_and_holder_are_one_shell() -> None:
     args = gen.parser().parse_args(["--no-text", "--outdir", "outputs", "--orientation", "front-up"])
     base, _, _ = gen.build_meshes(args)
 
-    assert connected_component_count(base) == 2
+    assert connected_component_count(base) == 1
 
 
 def test_no_text_builds_flat_plate_without_text_mesh() -> None:
@@ -268,7 +268,7 @@ def main() -> int:
         test_multiline_text_accepts_per_line_fonts,
         test_default_holder_fits_12mm_rebar,
         test_default_holder_uses_filled_transition,
-        test_holder_transition_is_part_of_holder_shell,
+        test_base_plate_and_holder_are_one_shell,
         test_no_text_builds_flat_plate_without_text_mesh,
         test_no_text_cli_skips_and_removes_plate_text_stl,
     ]
