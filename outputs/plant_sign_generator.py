@@ -59,6 +59,7 @@ from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
 DEFAULT_FONT = "/Library/Fonts/YS Text-Heavy.ttf"
 DEFAULT_TEXT = "яблоня"
+SCROLL_STYLES = ("classic", "double-spiral", "vine", "laurel", "tulip", "wave")
 FALLBACK_FONTS = [
     DEFAULT_FONT,
     "/Library/Fonts/Arial Unicode.ttf",
@@ -359,6 +360,194 @@ def scroll_curve_points(cx: float, cy: float, width: float, height: float, mirro
     return points
 
 
+def ornament_point(cx: float, cy: float, width: float, height: float, px: float, py: float, mirror: bool) -> tuple[float, float]:
+    x = cx + width * px
+    if mirror:
+        x = 2.0 * cx - x
+    return x, cy + height * py
+
+
+def draw_leaf(
+    mask: np.ndarray,
+    x_centers: np.ndarray,
+    y_centers: np.ndarray,
+    cx: float,
+    cy: float,
+    width: float,
+    height: float,
+    px: float,
+    py: float,
+    scale: float,
+    mirror: bool,
+    stroke: float,
+) -> None:
+    draw_polyline(
+        mask,
+        x_centers,
+        y_centers,
+        [
+            ornament_point(cx, cy, width, height, px - scale, py - scale * 0.25, mirror),
+            ornament_point(cx, cy, width, height, px, py + scale, mirror),
+            ornament_point(cx, cy, width, height, px + scale, py - scale * 0.25, mirror),
+        ],
+        stroke,
+    )
+
+
+def draw_classic_scroll(
+    mask: np.ndarray,
+    x_centers: np.ndarray,
+    y_centers: np.ndarray,
+    cx: float,
+    cy: float,
+    width: float,
+    height: float,
+    mirror: bool,
+    stroke: float,
+) -> None:
+    curve = scroll_curve_points(cx, cy, width, height, mirror)
+    draw_polyline(mask, x_centers, y_centers, curve, stroke)
+    leaf_x = cx + (-width * 0.24 if mirror else width * 0.24)
+    draw_polyline(
+        mask,
+        x_centers,
+        y_centers,
+        [
+            (leaf_x - width * 0.08, cy + height * 0.18),
+            (leaf_x, cy + height * 0.34),
+            (leaf_x + width * 0.08, cy + height * 0.18),
+        ],
+        stroke * 0.75,
+    )
+
+
+def draw_double_spiral_scroll(
+    mask: np.ndarray,
+    x_centers: np.ndarray,
+    y_centers: np.ndarray,
+    cx: float,
+    cy: float,
+    width: float,
+    height: float,
+    mirror: bool,
+    stroke: float,
+) -> None:
+    first = []
+    second = []
+    for index in range(96):
+        t = index / 95.0
+        angle = 1.9 * 2.0 * math.pi * t
+        radius = (1.0 - t) * 0.36
+        first.append(ornament_point(cx, cy, width, height, (t - 0.5) * 0.76 + radius * math.cos(angle), radius * math.sin(angle) * 0.8, mirror))
+    for index in range(72):
+        t = index / 71.0
+        angle = -1.35 * 2.0 * math.pi * t
+        radius = (1.0 - t) * 0.22
+        second.append(ornament_point(cx, cy, width, height, 0.24 - t * 0.52 + radius * math.cos(angle), -0.12 + radius * math.sin(angle) * 0.85, mirror))
+    draw_polyline(mask, x_centers, y_centers, first, stroke)
+    draw_polyline(mask, x_centers, y_centers, second, stroke * 0.72)
+    draw_disk(mask, x_centers, y_centers, *ornament_point(cx, cy, width, height, 0.33, 0.22, mirror), stroke * 0.85)
+
+
+def draw_vine_scroll(
+    mask: np.ndarray,
+    x_centers: np.ndarray,
+    y_centers: np.ndarray,
+    cx: float,
+    cy: float,
+    width: float,
+    height: float,
+    mirror: bool,
+    stroke: float,
+) -> None:
+    stem = [
+        ornament_point(cx, cy, width, height, (index / 79.0 - 0.5) * 0.84, 0.10 * math.sin(2.2 * math.pi * index / 79.0), mirror)
+        for index in range(80)
+    ]
+    draw_polyline(mask, x_centers, y_centers, stem, stroke)
+    for px, up in [(-0.30, 1.0), (-0.14, -1.0), (0.04, 1.0), (0.22, -1.0), (0.36, 1.0)]:
+        draw_leaf(mask, x_centers, y_centers, cx, cy, width, height, px, up * 0.12, 0.055, mirror, stroke * 0.7)
+
+
+def draw_laurel_scroll(
+    mask: np.ndarray,
+    x_centers: np.ndarray,
+    y_centers: np.ndarray,
+    cx: float,
+    cy: float,
+    width: float,
+    height: float,
+    mirror: bool,
+    stroke: float,
+) -> None:
+    branch = []
+    for index in range(70):
+        t = index / 69.0
+        branch.append(ornament_point(cx, cy, width, height, (t - 0.5) * 0.78, -0.18 + 0.30 * t + 0.08 * math.sin(math.pi * t), mirror))
+    draw_polyline(mask, x_centers, y_centers, branch, stroke * 0.85)
+    for px, py in [(-0.32, -0.10), (-0.20, -0.05), (-0.08, 0.0), (0.04, 0.05), (0.16, 0.10), (0.28, 0.15)]:
+        draw_leaf(mask, x_centers, y_centers, cx, cy, width, height, px, py + 0.08, 0.052, mirror, stroke * 0.72)
+        draw_leaf(mask, x_centers, y_centers, cx, cy, width, height, px + 0.02, py - 0.06, 0.048, mirror, stroke * 0.68)
+
+
+def draw_tulip_scroll(
+    mask: np.ndarray,
+    x_centers: np.ndarray,
+    y_centers: np.ndarray,
+    cx: float,
+    cy: float,
+    width: float,
+    height: float,
+    mirror: bool,
+    stroke: float,
+) -> None:
+    stem = [
+        ornament_point(cx, cy, width, height, -0.35 + 0.56 * t, -0.20 + 0.14 * math.sin(math.pi * t), mirror)
+        for t in np.linspace(0.0, 1.0, 72)
+    ]
+    draw_polyline(mask, x_centers, y_centers, stem, stroke * 0.9)
+    flower_base = ornament_point(cx, cy, width, height, 0.26, 0.02, mirror)
+    draw_disk(mask, x_centers, y_centers, *flower_base, stroke * 0.85)
+    for petal in [
+        [(0.17, 0.02), (0.20, 0.30), (0.25, 0.08)],
+        [(0.25, 0.06), (0.31, 0.34), (0.36, 0.04)],
+        [(0.21, 0.00), (0.30, 0.22), (0.38, -0.02)],
+    ]:
+        draw_polyline(
+            mask,
+            x_centers,
+            y_centers,
+            [ornament_point(cx, cy, width, height, px, py, mirror) for px, py in petal],
+            stroke * 0.72,
+        )
+    draw_leaf(mask, x_centers, y_centers, cx, cy, width, height, -0.06, -0.10, 0.065, mirror, stroke * 0.7)
+
+
+def draw_wave_scroll(
+    mask: np.ndarray,
+    x_centers: np.ndarray,
+    y_centers: np.ndarray,
+    cx: float,
+    cy: float,
+    width: float,
+    height: float,
+    mirror: bool,
+    stroke: float,
+) -> None:
+    wave = [
+        ornament_point(cx, cy, width, height, (index / 89.0 - 0.5) * 0.88, 0.10 * math.sin(2.6 * math.pi * index / 89.0), mirror)
+        for index in range(90)
+    ]
+    draw_polyline(mask, x_centers, y_centers, wave, stroke * 0.95)
+    for px, py in [(-0.28, 0.18), (0.0, -0.18), (0.28, 0.18)]:
+        draw_disk(mask, x_centers, y_centers, *ornament_point(cx, cy, width, height, px, py, mirror), stroke * 0.78)
+    tail = [
+        ornament_point(cx, cy, width, height, -0.44 + 0.16 * t, -0.04 + 0.16 * math.sin(math.pi * t), mirror)
+        for t in np.linspace(0.0, 1.0, 36)
+    ]
+    draw_polyline(mask, x_centers, y_centers, tail, stroke * 0.68)
+
+
 def make_top_scroll_mask(
     x_centers: np.ndarray,
     y_centers: np.ndarray,
@@ -368,27 +557,24 @@ def make_top_scroll_mask(
     height: float,
     margin_x: float,
     margin_top: float,
+    style: str,
 ) -> np.ndarray:
     mask = np.zeros((len(y_centers), len(x_centers)), dtype=bool)
     stroke = max(0.8, min(width, height) * 0.12)
     center_y = plate_height / 2.0 - margin_top - height / 2.0
     left_center_x = -plate_width / 2.0 + margin_x + width / 2.0
     right_center_x = plate_width / 2.0 - margin_x - width / 2.0
+    drawers = {
+        "classic": draw_classic_scroll,
+        "double-spiral": draw_double_spiral_scroll,
+        "vine": draw_vine_scroll,
+        "laurel": draw_laurel_scroll,
+        "tulip": draw_tulip_scroll,
+        "wave": draw_wave_scroll,
+    }
+    drawer = drawers[style]
     for center_x, mirror in ((left_center_x, False), (right_center_x, True)):
-        curve = scroll_curve_points(center_x, center_y, width, height, mirror)
-        draw_polyline(mask, x_centers, y_centers, curve, stroke)
-        leaf_x = center_x + (-width * 0.24 if mirror else width * 0.24)
-        draw_polyline(
-            mask,
-            x_centers,
-            y_centers,
-            [
-                (leaf_x - width * 0.08, center_y + height * 0.18),
-                (leaf_x, center_y + height * 0.34),
-                (leaf_x + width * 0.08, center_y + height * 0.18),
-            ],
-            stroke * 0.75,
-        )
+        drawer(mask, x_centers, y_centers, center_x, center_y, width, height, mirror, stroke)
     return mask
 
 
@@ -715,6 +901,7 @@ def build_meshes(args: argparse.Namespace) -> tuple[Mesh, Mesh | None, Mesh, dic
                 args.scroll_height,
                 args.scroll_margin_x,
                 args.scroll_margin_top,
+                args.scroll_style,
             )
             scroll_mask &= occupied
             text_mask |= scroll_mask
@@ -808,6 +995,7 @@ def parser() -> argparse.ArgumentParser:
     p.add_argument("--antialias", type=int, default=3)
     p.add_argument("--pocket-clearance", type=float, default=0.0)
     p.add_argument("--top-scrolls", action="store_true", help="Add second-color decorative scroll ornaments near the top.")
+    p.add_argument("--scroll-style", choices=SCROLL_STYLES, default="classic", help="Decorative top-scroll style.")
     p.add_argument("--scroll-width", type=float, default=32.0)
     p.add_argument("--scroll-height", type=float, default=12.0)
     p.add_argument("--scroll-margin-x", type=float, default=14.0)

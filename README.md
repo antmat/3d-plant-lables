@@ -39,6 +39,16 @@ Generate the default label with second-color top scrolls:
 python3 outputs/plant_sign_generator.py --text "яблоня" --top-scrolls --outdir outputs
 ```
 
+Choose a different top-scroll design:
+
+```bash
+python3 outputs/plant_sign_generator.py --text "яблоня" --top-scrolls \
+  --scroll-style vine \
+  --outdir outputs
+```
+
+Available styles: `classic`, `double-spiral`, `vine`, `laurel`, `tulip`, `wave`.
+
 Generate multiline text from stdin:
 
 ```bash

@@ -39,11 +39,21 @@ python3 plant_sign_generator.py --text "груша" --outdir .
 ```
 
 Опция `--top-scrolls` добавляет два декоративных завитка сверху во второй цвет
-вместе с надписью:
+вместе с надписью. По умолчанию используется стиль `classic`:
 
 ```bash
 python3 outputs/plant_sign_generator.py --text "яблоня" --top-scrolls --outdir outputs
 ```
+
+Другой стиль можно выбрать через `--scroll-style`:
+
+```bash
+python3 outputs/plant_sign_generator.py --text "яблоня" --top-scrolls \
+  --scroll-style vine \
+  --outdir outputs
+```
+
+Доступные стили: `classic`, `double-spiral`, `vine`, `laurel`, `tulip`, `wave`.
 
 Многострочный текст можно передать через stdin, не указывая `--text`:
 
@@ -90,6 +100,7 @@ python3 outputs/plant_sign_generator.py --no-text --outdir outputs
 --dovetail-clearance 0.35     # зазор паза на сторону
 --dovetail-depth 3            # глубина паза в табличке
 --top-scrolls                 # добавить декоративные завитки сверху
+--scroll-style vine           # выбрать стиль завитков
 --text-margin-x 10            # дать тексту больше ширины
 --text-depth 0.8              # глубина вплавления текста
 --line-size 24                # размер первой строки в мм

@@ -227,6 +227,39 @@ def test_top_scrolls_add_second_color_geometry_near_top_corners() -> None:
     assert connected_component_count(base_scrolls) == 1
 
 
+def test_all_top_scroll_styles_generate_corner_geometry() -> None:
+    styles = ["classic", "double-spiral", "vine", "laurel", "tulip", "wave"]
+    for style in styles:
+        args = gen.parser().parse_args([
+            "--text",
+            "яблоня",
+            "--top-scrolls",
+            "--scroll-style",
+            style,
+            "--outdir",
+            "outputs",
+            "--orientation",
+            "front-up",
+        ])
+        _, text, _, meta = gen.build_meshes(args)
+        points = np.array([point for tri in text.triangles for point in tri], dtype=float)
+        corner_y = args.plate_height / 2.0 - args.scroll_margin_top - args.scroll_height - 2.0
+        left = points[
+            (points[:, 0] < -args.plate_width / 2.0 + args.scroll_margin_x + args.scroll_width + 2.0)
+            & (points[:, 1] > corner_y)
+        ]
+        right = points[
+            (points[:, 0] > args.plate_width / 2.0 - args.scroll_margin_x - args.scroll_width - 2.0)
+            & (points[:, 1] > corner_y)
+        ]
+
+        assert args.scroll_style == style
+        assert int(meta["scroll_cells"]) > 0
+        assert len(left) > 0
+        assert len(right) > 0
+        assert non_manifold_edges(text) == {}
+
+
 def test_default_plate_uses_dovetail_holder() -> None:
     args = gen.parser().parse_args(["--text", "яблоня", "--outdir", "outputs"])
     base, _, holder, meta = gen.build_meshes(args)
@@ -380,6 +413,7 @@ def main() -> int:
         test_multiline_text_accepts_per_line_fonts,
         test_top_scrolls_default_off,
         test_top_scrolls_add_second_color_geometry_near_top_corners,
+        test_all_top_scroll_styles_generate_corner_geometry,
         test_default_plate_uses_dovetail_holder,
         test_holder_channel_has_blind_end_on_print_bed,
         test_dovetail_base_and_holder_are_manifold,
