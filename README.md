@@ -29,5 +29,21 @@ Generate another label:
 python3 outputs/plant_sign_generator.py --text "груша" --outdir outputs
 ```
 
+Generate multiline text from stdin:
+
+```bash
+printf 'яблоня\nMalus domestica\n' | python3 outputs/plant_sign_generator.py \
+  --line-size 24 \
+  --line-size 8 \
+  --outdir outputs
+```
+
+Per-line options repeat the last value when there are more lines than values:
+
+```bash
+--line-size 24
+--line-font "/Library/Fonts/YS Text-Heavy.ttf"
+```
+
 If your default Python does not have `numpy` and `Pillow`, the script will
 re-run itself with the bundled Codex Python runtime when it is available.

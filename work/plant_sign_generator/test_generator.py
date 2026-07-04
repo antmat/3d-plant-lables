@@ -88,6 +88,60 @@ def test_public_generator_runs_with_default_python() -> None:
     assert "Generate two aligned STL files" in result.stdout
 
 
+def test_resolve_text_reads_stdin_when_text_omitted() -> None:
+    args = gen.parser().parse_args([])
+
+    text = gen.resolve_text(args, stdin_text="яблоня\nMalus domestica\n")
+
+    assert text == "яблоня\nMalus domestica"
+
+
+def test_resolve_text_uses_default_when_text_omitted_and_stdin_empty() -> None:
+    args = gen.parser().parse_args([])
+
+    text = gen.resolve_text(args, stdin_text="")
+
+    assert text == "яблоня"
+
+
+def test_multiline_text_with_line_sizes_generates_two_line_mask() -> None:
+    args = gen.parser().parse_args([
+        "--text",
+        "яблоня\nMalus domestica",
+        "--line-size",
+        "22",
+        "--line-size",
+        "8",
+        "--outdir",
+        "outputs",
+    ])
+    base, text, meta = gen.build_meshes(args)
+    text_min, text_max = bbox(text)
+
+    assert meta["line_count"] == 2
+    assert text_max[1] - text_min[1] > 20.0
+    assert non_manifold_edges(base) == {}
+    assert non_manifold_edges(text) == {}
+
+
+def test_multiline_text_accepts_per_line_fonts() -> None:
+    georgia = "/System/Library/Fonts/Supplemental/Georgia Italic.ttf"
+    args = gen.parser().parse_args([
+        "--text",
+        "яблоня\nMalus domestica",
+        "--line-font",
+        "/Library/Fonts/YS Text-Heavy.ttf",
+        "--line-font",
+        georgia,
+        "--outdir",
+        "outputs",
+    ])
+    _, _, meta = gen.build_meshes(args)
+
+    assert meta["line_count"] == 2
+    assert georgia in meta["font_paths"]
+
+
 def main() -> int:
     tests = [
         test_image_mask_top_row_maps_to_model_top_row,
@@ -95,6 +149,10 @@ def main() -> int:
         test_default_base_mesh_has_manifold_edges,
         test_default_text_mesh_has_manifold_edges,
         test_public_generator_runs_with_default_python,
+        test_resolve_text_reads_stdin_when_text_omitted,
+        test_resolve_text_uses_default_when_text_omitted_and_stdin_empty,
+        test_multiline_text_with_line_sizes_generates_two_line_mask,
+        test_multiline_text_accepts_per_line_fonts,
     ]
     failed = 0
     for test in tests:

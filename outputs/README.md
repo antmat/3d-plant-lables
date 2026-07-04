@@ -33,6 +33,26 @@ python3 outputs/plant_sign_generator.py --text "груша" --outdir outputs
 python3 plant_sign_generator.py --text "груша" --outdir .
 ```
 
+Многострочный текст можно передать через stdin, не указывая `--text`:
+
+```bash
+printf 'яблоня\nMalus domestica\n' | python3 outputs/plant_sign_generator.py \
+  --line-size 24 \
+  --line-size 8 \
+  --outdir outputs
+```
+
+Для разных шрифтов по строкам используйте повторяемый параметр `--line-font`:
+
+```bash
+--line-font "/Library/Fonts/YS Text-Heavy.ttf"
+--line-font "/System/Library/Fonts/Supplemental/Georgia Italic.ttf"
+```
+
+Если строк больше, чем значений `--line-size` или `--line-font`, последнее
+значение повторяется. Если `--line-size` не указан, весь многострочный блок
+автоматически подгоняется под табличку.
+
 Если в обычном `python3` нет `numpy` или `Pillow`, скрипт автоматически
 перезапустится через bundled Codex Python, когда он доступен на этой машине.
 
@@ -44,6 +64,8 @@ python3 plant_sign_generator.py --text "груша" --outdir .
 --holder-length 70            # сделать держатель длиннее
 --text-margin-x 10            # дать тексту больше ширины
 --text-depth 0.8              # глубина вплавления текста
+--line-size 24                # размер первой строки в мм
+--line-size 8                 # размер второй строки в мм
 --orientation front-up        # экспорт в старой ориентации, текстом вверх
 ```
 

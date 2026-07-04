@@ -3,4 +3,5 @@ __pycache__/
 .DS_Store
 work/plant_sign_generator/text_preview_fixed.png
 work/test-default-python-output/
+work/test-multiline-output/
 outputs/outputs/

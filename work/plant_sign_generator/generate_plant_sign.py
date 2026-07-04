@@ -58,6 +58,7 @@ from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
 
 DEFAULT_FONT = "/Library/Fonts/YS Text-Heavy.ttf"
+DEFAULT_TEXT = "яблоня"
 FALLBACK_FONTS = [
     DEFAULT_FONT,
     "/Library/Fonts/Arial Unicode.ttf",
@@ -68,6 +69,14 @@ FALLBACK_FONTS = [
 
 Vec3 = tuple[float, float, float]
 Tri = tuple[Vec3, Vec3, Vec3]
+
+
+@dataclass(frozen=True)
+class TextLayout:
+    mask: np.ndarray
+    line_count: int
+    font_paths: list[str]
+    font_pixel_sizes: list[int]
 
 
 @dataclass
@@ -116,6 +125,28 @@ def existing_font(preferred: str) -> str:
     raise FileNotFoundError("No usable TrueType/OpenType font found")
 
 
+def normalize_text(text: str) -> str:
+    return text.replace("\\n", "\n").rstrip("\r\n")
+
+
+def resolve_text(args: argparse.Namespace, stdin_text: str | None = None) -> str:
+    if args.text == "-":
+        text = sys.stdin.read() if stdin_text is None else stdin_text
+        return normalize_text(text) or DEFAULT_TEXT
+    if args.text is not None:
+        return normalize_text(args.text) or DEFAULT_TEXT
+
+    if stdin_text is None:
+        stdin_text = sys.stdin.read() if not sys.stdin.isatty() else ""
+    return normalize_text(stdin_text) or DEFAULT_TEXT
+
+
+def repeated_option(values: list[object] | None, index: int, default: object) -> object:
+    if not values:
+        return default
+    return values[index] if index < len(values) else values[-1]
+
+
 def rounded_rect_occupancy(
     x_centers: np.ndarray,
     y_centers: np.ndarray,
@@ -152,37 +183,140 @@ def fit_font(text: str, font_path: str, max_w: int, max_h: int) -> ImageFont.Fre
     return best
 
 
-def render_text_mask(
+def measure_lines(
+    draw: ImageDraw.ImageDraw,
+    lines: list[str],
+    fonts: list[ImageFont.FreeTypeFont],
+    line_spacing: float,
+) -> tuple[list[tuple[int, int, int, int]], int, int, list[int]]:
+    bboxes = []
+    heights = []
+    max_width = 0
+    for line, font in zip(lines, fonts):
+        bbox = draw.textbbox((0, 0), line if line else " ", font=font)
+        width = bbox[2] - bbox[0]
+        height = bbox[3] - bbox[1] if line else max(1, font.size)
+        bboxes.append(bbox)
+        heights.append(height)
+        max_width = max(max_width, width)
+
+    gaps = []
+    for idx in range(max(0, len(lines) - 1)):
+        larger = max(fonts[idx].size, fonts[idx + 1].size)
+        gaps.append(max(0, int(round(larger * (line_spacing - 1.0)))))
+    total_height = sum(heights) + sum(gaps)
+    return bboxes, max_width, total_height, gaps
+
+
+def fit_multiline_fonts(
+    lines: list[str],
+    font_paths: list[str],
+    max_w: int,
+    max_h: int,
+    line_spacing: float,
+) -> list[ImageFont.FreeTypeFont]:
+    probe = Image.new("L", (10, 10))
+    draw = ImageDraw.Draw(probe)
+    lo, hi = 1, max(8, max_h * 2)
+    best = [ImageFont.truetype(path, lo) for path in font_paths]
+    while lo <= hi:
+        mid = (lo + hi) // 2
+        fonts = [ImageFont.truetype(path, mid) for path in font_paths]
+        _, width, height, _ = measure_lines(draw, lines, fonts, line_spacing)
+        if width <= max_w and height <= max_h:
+            best = fonts
+            lo = mid + 1
+        else:
+            hi = mid - 1
+    return best
+
+
+def fonts_from_line_sizes(
+    line_sizes: list[float],
+    font_paths: list[str],
+    px_per_mm: float,
+    max_w: int,
+    max_h: int,
+    lines: list[str],
+    line_spacing: float,
+) -> list[ImageFont.FreeTypeFont]:
+    sizes_px = [max(1, int(round(size_mm * px_per_mm))) for size_mm in line_sizes]
+    probe = Image.new("L", (10, 10))
+    draw = ImageDraw.Draw(probe)
+    fonts = [ImageFont.truetype(path, px) for path, px in zip(font_paths, sizes_px)]
+    _, width, height, _ = measure_lines(draw, lines, fonts, line_spacing)
+    if width <= max_w and height <= max_h:
+        return fonts
+
+    scale = min(max_w / max(width, 1), max_h / max(height, 1))
+    scaled_sizes = [max(1, int(math.floor(px * scale))) for px in sizes_px]
+    return [ImageFont.truetype(path, px) for path, px in zip(font_paths, scaled_sizes)]
+
+
+def render_text_layout(
     text: str,
     font_path: str,
+    line_fonts: list[str] | None,
+    line_sizes: list[float] | None,
     nx: int,
     ny: int,
     plate_width: float,
     plate_height: float,
     margin_x: float,
     margin_y: float,
+    line_spacing: float,
     antialias: int,
     threshold: int,
-) -> np.ndarray:
+) -> TextLayout:
     scale = max(1, antialias)
     w_px = nx * scale
     h_px = ny * scale
     max_w = int((plate_width - 2.0 * margin_x) / plate_width * w_px)
     max_h = int((plate_height - 2.0 * margin_y) / plate_height * h_px)
-    font = fit_font(text, font_path, max_w, max_h)
+    lines = text.split("\n") or [DEFAULT_TEXT]
+    font_paths = [
+        existing_font(str(repeated_option(line_fonts, index, font_path)))
+        for index in range(len(lines))
+    ]
 
     img = Image.new("L", (w_px, h_px), 0)
     draw = ImageDraw.Draw(img)
-    left, top, right, bottom = draw.textbbox((0, 0), text, font=font)
-    text_w = right - left
-    text_h = bottom - top
-    x = (w_px - text_w) / 2.0 - left
-    y = (h_px - text_h) / 2.0 - top
-    draw.text((x, y), text, fill=255, font=font)
+    if line_sizes:
+        physical_sizes = [
+            float(repeated_option(line_sizes, index, line_sizes[-1]))
+            for index in range(len(lines))
+        ]
+        fonts = fonts_from_line_sizes(
+            physical_sizes,
+            font_paths,
+            (w_px / plate_width),
+            max_w,
+            max_h,
+            lines,
+            line_spacing,
+        )
+    else:
+        fonts = fit_multiline_fonts(lines, font_paths, max_w, max_h, line_spacing)
+
+    bboxes, width, height, gaps = measure_lines(draw, lines, fonts, line_spacing)
+    y = (h_px - height) / 2.0
+    for index, (line, font, bbox) in enumerate(zip(lines, fonts, bboxes)):
+        line_width = bbox[2] - bbox[0]
+        line_height = bbox[3] - bbox[1] if line else max(1, font.size)
+        if line:
+            x = (w_px - line_width) / 2.0 - bbox[0]
+            draw.text((x, y - bbox[1]), line, fill=255, font=font)
+        if index < len(gaps):
+            y += line_height + gaps[index]
 
     if scale != 1:
         img = img.resize((nx, ny), Image.Resampling.LANCZOS)
-    return np.asarray(img) >= threshold
+    return TextLayout(
+        mask=np.asarray(img) >= threshold,
+        line_count=len(lines),
+        font_paths=font_paths,
+        font_pixel_sizes=[font.size for font in fonts],
+    )
 
 
 def dilate_mask(mask: np.ndarray, clearance_mm: float, resolution_mm: float) -> np.ndarray:
@@ -399,20 +533,25 @@ def build_meshes(args: argparse.Namespace) -> tuple[Mesh, Mesh, dict[str, object
     x_centers = (x_edges[:-1] + x_edges[1:]) / 2.0
     y_centers = (y_edges[:-1] + y_edges[1:]) / 2.0
 
+    args.text = args.text or DEFAULT_TEXT
     font = existing_font(args.font)
     occupied = rounded_rect_occupancy(x_centers, y_centers, args.plate_width, args.plate_height, args.corner_radius)
-    text_mask = render_text_mask(
+    text_layout = render_text_layout(
         args.text,
         font,
+        args.line_font,
+        args.line_size,
         nx,
         ny,
         args.plate_width,
         args.plate_height,
         args.text_margin_x,
         args.text_margin_y,
+        args.line_spacing,
         args.antialias,
         args.text_threshold,
     )
+    text_mask = text_layout.mask
     text_mask = image_mask_to_model_mask(text_mask)
     text_mask &= occupied
     text_mask = fill_diagonal_contacts(text_mask) & occupied
@@ -464,15 +603,21 @@ def build_meshes(args: argparse.Namespace) -> tuple[Mesh, Mesh, dict[str, object
         "text_triangles": len(text.triangles),
         "channel_diameter": holder_inner * 2.0,
         "orientation": args.orientation,
+        "line_count": text_layout.line_count,
+        "font_paths": ", ".join(text_layout.font_paths),
+        "font_pixel_sizes": ", ".join(str(size) for size in text_layout.font_pixel_sizes),
     }
     return base, text, meta
 
 
 def parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(description="Generate two aligned STL files for a plant sign.")
-    p.add_argument("--text", default="яблоня", help="Text to put on the sign.")
+    p.add_argument("--text", default=None, help="Text to put on the sign. Use '-' to read stdin.")
     p.add_argument("--outdir", default="outputs", help="Directory for plate_base.stl and plate_text.stl.")
     p.add_argument("--font", default=DEFAULT_FONT, help="Path to a TTF/OTF font with Cyrillic support.")
+    p.add_argument("--line-font", action="append", default=None, help="Repeatable per-line font path. Last value repeats.")
+    p.add_argument("--line-size", action="append", type=float, default=None, help="Repeatable per-line font size in mm. Last value repeats.")
+    p.add_argument("--line-spacing", type=float, default=1.18, help="Line spacing multiplier.")
     p.add_argument("--plate-width", type=float, default=180.0)
     p.add_argument("--plate-height", type=float, default=90.0)
     p.add_argument("--plate-thickness", type=float, default=4.0)
@@ -504,6 +649,7 @@ def parser() -> argparse.ArgumentParser:
 
 def main() -> None:
     args = parser().parse_args()
+    args.text = resolve_text(args)
     os.makedirs(args.outdir, exist_ok=True)
     base, text, meta = build_meshes(args)
 
